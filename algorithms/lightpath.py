@@ -1,4 +1,5 @@
 import numpy as np
+from utils import QCluster
 
 class LightPath():
     def __init__(self, detector_specs):
@@ -52,7 +53,7 @@ class LightPath():
         Returns
           a qcluster instance
         """
-        res = []
+        res = QCluster([])
 
         # add first point of trajectory
         res.append([track[0][0], track[0][1], track[0][2], 0.])

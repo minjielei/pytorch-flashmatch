@@ -1,5 +1,5 @@
 import numpy as np
-from multiprocessing import Pool
+from utils import Flash
 
 class FlashHypothesis():
     def __init__(self, detector_specs, photon_library):
@@ -22,7 +22,7 @@ class FlashHypothesis():
         -------
         Returns
         """
-        flash = []
+        flash = Flash([])
         track = old_track.copy()
         # extend track if necessary
         if self.extend_tracks:

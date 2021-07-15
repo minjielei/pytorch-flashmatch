@@ -21,7 +21,7 @@ class ToyMC():
         self.truncate_tpc = 0
 
     # create pairs of TPC and PMT matches
-    def make_flashmatch_input(self, num_match=None, use_numpy=True):
+    def make_flashmatch_input(self, num_match=None):
         """
         Make N input pairs for flash matching
         --------
@@ -33,8 +33,6 @@ class ToyMC():
         if num_match is None:
             num_match = self.num_tracks
 
-        array_ctor = np.array if use_numpy else torch.Tensor
-
         pmt_v = []
         tpc_v = []
         raw_tpc_v = []
@@ -45,26 +43,33 @@ class ToyMC():
         # generate flash time and x shift (for reco x position assuming trigger time)
         xt_v = self.gen_xt_shift(len(track_v))
         # Defined allowed x recording regions
-        mintpcx, max_tpcx = [t * self.detector['DriftVelocity'] for t in self.periodTPC]
+        min_tpcx, max_tpcx = [t * self.detector['DriftVelocity'] for t in self.periodTPC]
         # generate flash and qclusters
         for idx, track in enumerate(track_v):
             # create raw TPC position and light info
             raw_qcluster = self.make_qcluster(track)
+            raw_qcluster.idx = idx
             # Create PMT PE spectrum from raw qcluster
             flash = self.make_flash(raw_qcluster)
+            flash.idx = idx
             # Apply x shift and set flash time
             ftime, dx = xt_v[idx]
-            qcluster = x_shift(raw_qcluster, dx)
+            flash.time = ftime
+            flash.true_time = ftime
+            qcluster = raw_qcluster + dx
+            qcluster.idx = idx
+            qcluster.true_time = ftime
+            raw_qcluster.true_time = ftime
             # Drop qcluster points that are outside the recording range
             if self.truncate_tpc:
-                qcluster = truncate_qcluster(qcluster)
+                qcluster.drop(min_tpcx, max_tpcx)
             # check for orphan
             valid_match = len(qcluster) > 0 and np.sum(flash) > 0
             if len(qcluster) > 0:
-                tpc_v.append(array_ctor(qcluster))
-                raw_tpc_v.append(array_ctor(raw_qcluster))
+                tpc_v.append(qcluster)
+                raw_tpc_v.append(raw_qcluster)
             if np.sum(flash) > 0:
-                pmt_v.append(array_ctor(flash))
+                pmt_v.append(flash)
             if valid_match:
                 true_match.append((idx,idx))
 
@@ -146,8 +151,8 @@ class ToyMC():
         qcluster = self.qcluster_algo.make_qcluster_from_track(track)
         # apply variation if needed
         if self.ly_variation > 0:
-            var = abs(np.random.normal(1.0, self.ly_variation, qcluster.size()))
-            for idx in range(qcluster.size()): qcluster[idx][-1] *= var[idx]
+            var = abs(np.random.normal(1.0, self.ly_variation, len(qcluster)))
+            for idx in range(len(qcluster)): qcluster[idx][-1] *= var[idx]
 
         return qcluster
 
@@ -169,6 +174,7 @@ class ToyMC():
         for idx in range(len(flash)):
             estimate = float(int(np.random.poisson(flash[idx] * var[idx])))
             flash[idx] = estimate
+            flash.pe_err_v.append(np.sqrt(estimate))
 
         return flash
 
