@@ -1,17 +1,15 @@
 from algorithms.lightpath import LightPath
 from algorithms.flash_hypothesis import FlashHypothesis
-from utils import x_shift, truncate_qcluster
 import numpy as np
 import yaml
-import torch
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+import configparser, ast
 
 class ToyMC():
-    def __init__(self, detector_cfg, photon_library):
+    def __init__(self, detector_cfg, photon_library, cfg_file=None):
         self.detector = yaml.safe_load(detector_cfg)['DetectorSpecs']
         self.plib = photon_library
-        self.qcluster_algo = LightPath(self.detector)
-        self.flash_algo = FlashHypothesis(self.detector, photon_library)
+        self.qcluster_algo = LightPath(self.detector, cfg_file)
+        self.flash_algo = FlashHypothesis(self.detector, photon_library, cfg_file)
         self.time_algo = 'random'
         self.track_algo = 'random'
         self.periodTPC = [-1000, 1000]
@@ -19,6 +17,21 @@ class ToyMC():
         self.ly_variation = 0.0
         self.pe_variation = 0.0
         self.truncate_tpc = 0
+        if cfg_file:
+            self.configure(cfg_file)
+
+    def configure(self, cfg_file):
+        config = configparser.ConfigParser(inline_comment_prefixes="#")
+        config.read(cfg_file)
+        pset = config["ToyMC"]
+        self.time_algo = ast.literal_eval(pset["TimeAlgo"])
+        self.track_algo = ast.literal_eval(pset["TrackAlgo"])
+        self.periodTPC = ast.literal_eval(pset["PeriodTPC"])
+        self.periodPMT = ast.literal_eval(pset["PeriodPMT"])
+        self.ly_variation = pset.getfloat("LightYieldVariation")
+        self.pe_variation = pset.getfloat("PEVariation")
+        self.truncate_tpc = pset.getint("TruncateTPC")
+        self.num_tracks = pset.getint("NumTracks")
 
     # create pairs of TPC and PMT matches
     def make_flashmatch_input(self, num_match=None):

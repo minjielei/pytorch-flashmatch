@@ -1,17 +1,29 @@
 import numpy as np
 from utils import Flash
+import configparser, ast
 
 class FlashHypothesis():
-    def __init__(self, detector_specs, photon_library):
+    def __init__(self, detector_specs, photon_library, cfg_file=None):
         self.NUM_PROCESS = 4
         self.detector = detector_specs
         self.plib = photon_library
         self.global_qe = 0.0093
-        self.extend_tracks = False
+        self.qe_v = []  # CCVCorrection factor array
+        self.extend_tracks = 0
         self.threshold_extend_tracks = 5.0
         self.segment_size = 0.5
-        self.qe_v = []  # CCVCorrection factor array
-        
+        if cfg_file:
+            self.configure(cfg_file)
+
+    def configure(self, cfg_file):
+        config = configparser.ConfigParser(inline_comment_prefixes="#")
+        config.read(cfg_file)
+        pset = config["PhotonLibHypothesis"]
+        self.global_qe = pset.getfloat("GlobalQE")
+        self.qe_v = ast.literal_eval(pset["CCVCorrection"])
+        self.extend_tracks = pset.getint("ExtendTracks")
+        self.threshold_extend_tracks = pset.getfloat("ThresholdExtendTrack")
+        self.segment_size = pset.getfloat("SegmentSize")
 
     def fill_estimate(self, old_track):
         """

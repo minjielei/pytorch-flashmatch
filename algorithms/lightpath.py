@@ -1,11 +1,20 @@
 import numpy as np
 from utils import QCluster
+import configparser, ast
 
 class LightPath():
-    def __init__(self, detector_specs):
+    def __init__(self, detector_specs, cfg_file=None):
         self.gap = 0.5
         self.dEdxMIP = detector_specs['MIPdEdx']
         self.light_yield = detector_specs['LightYield']
+        if cfg_file:
+            self.configure(cfg_file)
+
+    def configure(self, cfg_file):
+        config = configparser.ConfigParser(inline_comment_prefixes="#")
+        config.read(cfg_file)
+        pset = config["LightPath"]
+        self.gap = pset.getfloat("SegmentSize")
     
     def fill_qcluster(self, pt1, pt2, qcluster):
         """
