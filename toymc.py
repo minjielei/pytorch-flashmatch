@@ -2,14 +2,13 @@ from algorithms.lightpath import LightPath
 from algorithms.flash_hypothesis import FlashHypothesis
 import numpy as np
 import yaml
-import configparser, ast
 
 class ToyMC():
-    def __init__(self, detector_cfg, photon_library, cfg_file=None):
-        self.detector = yaml.safe_load(detector_cfg)['DetectorSpecs']
+    def __init__(self, photon_library, detector_file='data/detector_specs.yml', cfg_file=None):
+        self.detector = yaml.load(open(detector_file), Loader=yaml.Loader)['DetectorSpecs']
         self.plib = photon_library
         self.qcluster_algo = LightPath(self.detector, cfg_file)
-        self.flash_algo = FlashHypothesis(self.detector, photon_library, cfg_file)
+        self.flash_algo = FlashHypothesis(photon_library, self.detector, cfg_file)
         self.time_algo = 'random'
         self.track_algo = 'random'
         self.periodTPC = [-1000, 1000]
@@ -21,17 +20,15 @@ class ToyMC():
             self.configure(cfg_file)
 
     def configure(self, cfg_file):
-        config = configparser.ConfigParser(inline_comment_prefixes="#")
-        config.read(cfg_file)
-        pset = config["ToyMC"]
-        self.time_algo = ast.literal_eval(pset["TimeAlgo"])
-        self.track_algo = ast.literal_eval(pset["TrackAlgo"])
-        self.periodTPC = ast.literal_eval(pset["PeriodTPC"])
-        self.periodPMT = ast.literal_eval(pset["PeriodPMT"])
-        self.ly_variation = pset.getfloat("LightYieldVariation")
-        self.pe_variation = pset.getfloat("PEVariation")
-        self.truncate_tpc = pset.getint("TruncateTPC")
-        self.num_tracks = pset.getint("NumTracks")
+        config = yaml.load(open(cfg_file), Loader=yaml.Loader)["ToyMC"]
+        self.time_algo = config["TimeAlgo"]
+        self.track_algo = config["TrackAlgo"]
+        self.periodTPC = config["PeriodTPC"]
+        self.periodPMT = config["PeriodPMT"]
+        self.ly_variation = config["LightYieldVariation"]
+        self.pe_variation = config["PEVariation"]
+        self.truncate_tpc = config["TruncateTPC"]
+        self.num_tracks = config["NumTracks"]
 
     # create pairs of TPC and PMT matches
     def make_flashmatch_input(self, num_match=None):

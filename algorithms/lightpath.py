@@ -1,6 +1,6 @@
 import numpy as np
+import yaml
 from utils import QCluster
-import configparser, ast
 
 class LightPath():
     def __init__(self, detector_specs, cfg_file=None):
@@ -11,10 +11,8 @@ class LightPath():
             self.configure(cfg_file)
 
     def configure(self, cfg_file):
-        config = configparser.ConfigParser(inline_comment_prefixes="#")
-        config.read(cfg_file)
-        pset = config["LightPath"]
-        self.gap = pset.getfloat("SegmentSize")
+        config = yaml.load(open(cfg_file), Loader=yaml.Loader)["LightPath"]
+        self.gap = config["SegmentSize"]
     
     def fill_qcluster(self, pt1, pt2, qcluster):
         """

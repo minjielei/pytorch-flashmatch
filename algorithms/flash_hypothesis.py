@@ -1,9 +1,9 @@
 import numpy as np
+import yaml
 from utils import Flash
-import configparser, ast
 
 class FlashHypothesis():
-    def __init__(self, detector_specs, photon_library, cfg_file=None):
+    def __init__(self, photon_library, detector_specs, cfg_file=None):
         self.NUM_PROCESS = 4
         self.detector = detector_specs
         self.plib = photon_library
@@ -16,14 +16,12 @@ class FlashHypothesis():
             self.configure(cfg_file)
 
     def configure(self, cfg_file):
-        config = configparser.ConfigParser(inline_comment_prefixes="#")
-        config.read(cfg_file)
-        pset = config["PhotonLibHypothesis"]
-        self.global_qe = pset.getfloat("GlobalQE")
-        self.qe_v = ast.literal_eval(pset["CCVCorrection"])
-        self.extend_tracks = pset.getint("ExtendTracks")
-        self.threshold_extend_tracks = pset.getfloat("ThresholdExtendTrack")
-        self.segment_size = pset.getfloat("SegmentSize")
+        config = yaml.load(open(cfg_file), Loader=yaml.Loader)["PhotonLibHypothesis"]
+        self.global_qe = config["GlobalQE"]
+        self.qe_v = config["CCVCorrection"]
+        self.extend_tracks = config["ExtendTracks"]
+        self.threshold_extend_tracks = config["ThresholdExtendTrack"]
+        self.segment_size = config["SegmentSize"]
 
     def fill_estimate(self, old_track):
         """
