@@ -1,5 +1,5 @@
 from algorithms.lightpath import LightPath
-from algorithms.flash_hypothesis import FlashHypothesis
+from algorithms.flashalgo import FlashAlgo
 import numpy as np
 import yaml
 
@@ -8,7 +8,7 @@ class ToyMC():
         self.detector = yaml.load(open(detector_file), Loader=yaml.Loader)['DetectorSpecs']
         self.plib = photon_library
         self.qcluster_algo = LightPath(self.detector, cfg_file)
-        self.flash_algo = FlashHypothesis(photon_library, self.detector, cfg_file)
+        self.flash_algo = FlashAlgo(photon_library, cfg_file)
         self.time_algo = 'random'
         self.track_algo = 'random'
         self.periodTPC = [-1000, 1000]
