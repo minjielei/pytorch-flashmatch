@@ -19,5 +19,11 @@ class FlashMatchManager():
     def flash_hypothesis(self,qcluster):
         pass
 
+    def train(self):
+        pass
+
+    def inference(self):
+        pass
+
     def run_flash_match(self,match_input):
         pass
