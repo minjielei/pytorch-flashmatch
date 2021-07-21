@@ -1,5 +1,6 @@
 from algorithms.lightpath import LightPath
 from algorithms.flashalgo import FlashAlgo
+from utils import FlashMatchInput
 import numpy as np
 import yaml
 
@@ -43,13 +44,11 @@ class ToyMC():
         if num_match is None:
             num_match = self.num_tracks
 
-        pmt_v = []
-        tpc_v = []
-        raw_tpc_v = []
-        true_match = []
+        result = FlashMatchInput()
         
         # generate 3D trajectories inside the detector
         track_v = self.gen_trajectories(num_match)
+        result.track_v = track_v
         # generate flash time and x shift (for reco x position assuming trigger time)
         xt_v = self.gen_xt_shift(len(track_v))
         # Defined allowed x recording regions
@@ -76,14 +75,14 @@ class ToyMC():
             # check for orphan
             valid_match = len(qcluster) > 0 and np.sum(flash) > 0
             if len(qcluster) > 0:
-                tpc_v.append(qcluster)
-                raw_tpc_v.append(raw_qcluster)
+                result.qcluster_v.append(qcluster)
+                result.raw_qcluster_v.append(raw_qcluster)
             if np.sum(flash) > 0:
-                pmt_v.append(flash)
+                result.flash_v.append(flash)
             if valid_match:
-                true_match.append((idx,idx))
+                result.true_match.append((idx,idx))
 
-        return track_v, tpc_v, pmt_v, raw_tpc_v
+        return result
 
     def gen_trajectories(self, num_tracks):
         """
