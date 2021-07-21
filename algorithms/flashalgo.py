@@ -1,5 +1,6 @@
 from re import A, S
 import numpy as np
+from prompt_toolkit.shortcuts.dialogs import yes_no_dialog
 import yaml
 from utils import Flash
 
@@ -9,7 +10,7 @@ class FlashAlgo():
         self.global_qe = 0.0093
         self.qe_v = []  # CCVCorrection factor array
         if cfg_file:
-            self.configure(cfg_file)
+          self.configure(cfg_file)
 
     def configure(self, cfg_file):
         config = yaml.load(open(cfg_file), Loader=yaml.Loader)["PhotonLibHypothesis"]
@@ -29,13 +30,14 @@ class FlashAlgo():
         # fill estimate
         local_pe_v = self.plib.VisibilityFromXYZ(track[0][:3])*track[0][3]
         for i in range(1, len(track)):
+          if track[i][3] != 0:
             local_pe_v += self.plib.VisibilityFromXYZ(track[i][:3])*track[i][3]
 
         if len(self.qe_v) == 0:
-            self.qe_v = np.ones(local_pe_v.shape)
+          self.qe_v = np.ones(local_pe_v.shape)
         res = local_pe_v * self.global_qe * self.qe_v
         if use_numpy:
-            return res
+          return res
         
         return Flash(res.tolist())
 
@@ -52,10 +54,13 @@ class FlashAlgo():
         num_voxel_x = self.plib.shape[0]
         res = []
         for qpt in track: 
-            x, y, z, q = qpt
+          x, y, z, q = qpt
+          if q == 0:
+            res.append(np.zeros(self.plib.num_pmt))
+          else:
             vid = self.plib.Position2VoxID([x, y, z])
             grad = 0
-            if vid % num_voxel_x:
+            if vid % num_voxel_x == 0:
               gap = self.plib.VoxID2Position(vid+1)[0] - self.plib.VoxID2Position(vid)[0]
               grad = (self.plib.Visibility(vid+1) - self.plib.Visibility(vid)) / gap
             elif vid % num_voxel_x == 1:

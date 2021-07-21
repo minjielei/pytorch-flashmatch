@@ -9,11 +9,11 @@ class XShift(nn.Module):
     def __init__(self, num_tracks):
         super(XShift, self).__init__()
         self.num_tracks = num_tracks
-        self.xshift = nn.Parameter(torch.empty(num_tracks, 1))
-        self.xshift.data.fill_(0)
+        self.x = nn.Parameter(torch.empty(num_tracks, 1))
+        self.x.data.fill_(0)
 
     def forward(self, input):
-        shift = torch.cat((self.xshift, torch.zeros(self.num_tracks, input.shape[2]-1)), -1)
+        shift = torch.cat((self.x, torch.zeros(self.num_tracks, input.shape[2]-1)), -1)
         return torch.add(input, shift.expand(input.shape[1], -1, -1).reshape(input.shape))
 
 

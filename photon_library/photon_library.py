@@ -46,7 +46,8 @@ class PhotonLibrary(object):
             self._min  = np.array(f['min'])
             self._max  = np.array(f['max'])
             self.shape = np.array(f['numvox'])
-            
+        
+        self.num_pmt = self._vis.shape[1]
         pmt_data = np.loadtxt(path + 'pmt_loc.csv',skiprows=1,delimiter=',')
         if not (pmt_data[:,0].astype(np.int32) == np.arange(pmt_data.shape[0])).all():
             raise Exception('pmt_loc.csv contains optical channel data not in order of channel numbers')
