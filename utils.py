@@ -38,7 +38,7 @@ class QCluster(list):
         self.true_time = np.inf # time from MCTrack information
 
     def __add__(self, shift):
-        rhs = copy.copy(self)
+        rhs = copy.deepcopy(self)
         for i in range(len(self)):
             rhs[i][0] += shift
         return rhs
