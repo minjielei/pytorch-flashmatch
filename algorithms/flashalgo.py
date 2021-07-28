@@ -50,22 +50,16 @@ class FlashAlgo():
           gradient value of the fill_estimate step for track
         """
         num_voxel_x = self.plib.shape[0]
+        x_min, x_max = self.plib.VoxID2Position(0)[0], self.plib.VoxID2Position(num_voxel_x-1)[0]
         res = []
         for qpt in track: 
           x, y, z, q = qpt
+          # skip photon library calculations if q is 0
           if q == 0:
             res.append(np.zeros(self.plib.num_pmt))
           else:
             vid = self.plib.Position2VoxID([x, y, z])
-            grad = 0
-            if vid % num_voxel_x == 0:
-              gap = self.plib.VoxID2Position(vid+1)[0] - self.plib.VoxID2Position(vid)[0]
-              grad = (self.plib.Visibility(vid+1) - self.plib.Visibility(vid)) / gap
-            elif vid % num_voxel_x == 1:
-              gap = self.plib.VoxID2Position(vid+1)[0] - self.plib.VoxID2Position(vid-1)[0]
-              grad = (self.plib.Visibility(vid+1) - self.plib.Visibility(vid-1)) / gap
-            else:
-              gap = self.plib.VoxID2Position(vid)[0] - self.plib.VoxID2Position(vid-1)[0]
-              grad = (self.plib.Visibility(vid) - self.plib.Visibility(vid-1)) / gap
+            gap = self.plib.VoxID2Position(vid+1)[0] - self.plib.VoxID2Position(vid)[0]
+            grad = (self.plib.Visibility(vid+1) - self.plib.Visibility(vid)) / gap
             res.append(grad * q * self.global_qe * self.qe_v)
         return res
