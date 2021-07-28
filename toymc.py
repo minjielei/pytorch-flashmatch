@@ -30,6 +30,8 @@ class ToyMC():
         self.pe_variation = config["PEVariation"]
         self.truncate_tpc = config["TruncateTPC"]
         self.num_tracks = config["NumTracks"]
+        if 'NumpySeed' in config:
+            np.random.seed(config['NumpySeed'])
 
     # create pairs of TPC and PMT matches
     def make_flashmatch_input(self, num_match=None):
