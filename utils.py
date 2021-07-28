@@ -17,8 +17,7 @@ class FlashMatchInput:
 
     def make_torch_input(self):
         target = torch.Tensor(self.flash_v)
-        max_len = max(map(len, self.qcluster_v))
-        input = torch.Tensor([np.vstack((track, np.zeros((max_len-len(track), 4)))) for track in self.qcluster_v])
+        input = [torch.Tensor(qcluster) for qcluster in self.qcluster_v]
         return input, target
 
 class Flash(list):
@@ -67,10 +66,10 @@ class QCluster(list):
         return res
 
     # drop points outside specified range
-    def drop(self, x_min, x_max, y_min = -np.inf, y_max = np.max, z_min = -np.inf, z_max = np.inf):
+    def drop(self, x_min, x_max, y_min = -np.inf, y_max = np.inf, z_min = -np.inf, z_max = np.inf):
         old_qcluster = self.copy()
         self.clear()
-        for idx, pt in enumerate(old_qcluster):
+        for pt in old_qcluster:
             if pt[0] < x_min: continue
             if pt[0] > x_max: continue
             if pt[1] < y_min: continue
@@ -114,4 +113,15 @@ def extend_track(detector, threshold, segment_size, track):
             else:
                 track.append([current[0], current[1], current[2], q])
             current = current + unit * current_segment_size / 2.0
+
+def get_x_constraints(input, detector_specs):
+    """
+    compute the x shift bounds of given qcluster input for it to be within active volume
+    """
+    vol_x_min = detector_specs['ActiveVolumeMin'][0]
+    vol_x_max = detector_specs['ActiveVolumeMax'][0]
+    track_x_min, track_x_max = torch.min(input[:, 0]), torch.max(input[:, 0])
+    x_min = torch.min(torch.min(vol_x_min - track_x_min, vol_x_max - track_x_max), torch.zeros(1)).item()
+    x_max = torch.max(vol_x_min - track_x_min, vol_x_max - track_x_max).item()
+    return x_min, x_max
     

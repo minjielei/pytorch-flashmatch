@@ -6,12 +6,16 @@ class XShift(nn.Module):
     """
         Shift input qcluster along x axis
     """
-    def __init__(self):
+    def __init__(self, constraints):
         super(XShift, self).__init__()
+        self.x_min = constraints[0]
+        self.x_max = constraints[1]
+        self.ic = (self.x_min + self.x_max) / 2.
         self.x = nn.Parameter(torch.empty(1))
-        self.x.data.fill_(0.)
+        self.x.data.fill_(self.ic)
 
     def forward(self, input):
+        self.x.data.clamp_(self.x_min, self.x_max)
         shift = torch.cat((self.x, torch.zeros(3)), -1)
         return torch.add(input, shift.expand(input.shape[0], -1))
 
