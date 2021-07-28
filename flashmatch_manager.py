@@ -17,16 +17,16 @@ class FlashMatchManager():
         self.detector_specs = yaml.load(open(detector_file), Loader=yaml.Loader)['DetectorSpecs']
         self.max_iteration = int(config['MaxIteration'])
         self.init_lr = config['InitLearningRate']
+        self.lr_range = config['LearningRateRange']
+        self.loss_thresholds = config['LossThresholds']
         self.min_lr = config['MinLearningRate']
-        self.patience = config['Patience']
-        self.min_delta = config['MinDelta']
-        self.loss_threshold = config['LossThreshold']
-        self.lr_multiplier = config['LRateMultipliter']
+        self.scheduler_factor = config['SchedulerFactor']
+        self.stopping_patience = config['StoppingPatience']
+        self.stopping_delta = config['StoppingDelta']
 
         self.reader = ToyMC(photon_library, detector_file, cfg)
         self.flash_algo = self.reader.flash_algo
         self.loss_fn = PoissonMatchLoss()
-        self.early_stopping = EarlyStopping(self.patience, self.min_delta)
         self.model = None
         self.optimizer = None
         
@@ -37,8 +37,18 @@ class FlashMatchManager():
     def train(self, input, target):
         constraints = get_x_constraints(input, self.detector_specs) 
         self.model = GradientModel(self.flash_algo, constraints)
+
+        # run one iteration to determine optimal initial learning rate
+        pred = self.model(input)
+        loss, match = self.loss_fn(pred, target)
+        for lr, loss_threshold in zip(self.lr_range, self.loss_thresholds):
+            if loss < loss_threshold:
+                self.init_lr = lr
+                break
+
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.init_lr)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, min_lr=self.min_lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, min_lr=self.min_lr, factor=self.scheduler_factor)
+        early_stopping = EarlyStopping(self.stopping_patience, self.stopping_delta)
 
         for i in range(self.max_iteration):
             pred = self.model(input)
@@ -48,14 +58,9 @@ class FlashMatchManager():
             loss.backward()
             self.optimizer.step()
             scheduler.step(loss)
-            # self.early_stopping(loss)
-            # if self.early_stopping.early_stop:
-            #     # if loss > self.loss_threshold:
-            #     #     optimizer.param_groups[0]['lr'] *= self.lr_multiplier
-            #     #     self.early_stopping = EarlyStopping(self.patience, self.min_delta)
-            #     # else:
-            #     #     break
-            #     break
+            early_stopping(loss)
+            if early_stopping.early_stop:
+                break
 
         return loss.item(), match.item(), self.model.xshift.x.item()
 
