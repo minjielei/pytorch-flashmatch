@@ -1,6 +1,8 @@
 import numpy as np
+import torch
 import yaml
 from utils import Flash
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class FlashAlgo():
     def __init__(self, photon_library, cfg_file=None):
@@ -13,9 +15,9 @@ class FlashAlgo():
     def configure(self, cfg_file):
         config = yaml.load(open(cfg_file), Loader=yaml.Loader)["PhotonLibHypothesis"]
         self.global_qe = config["GlobalQE"]
-        self.qe_v = np.array(config["CCVCorrection"])
+        self.qe_v = torch.tensor(config["CCVCorrection"], device=device)
 
-    def fill_estimate(self, track, use_numpy=False):
+    def fill_estimate(self, track, use_tensor=False):
         """
         fill flash hypothsis based on given qcluster track
         ---------
@@ -26,15 +28,14 @@ class FlashAlgo():
           a hypothesis Flash object
         """
         # fill estimate
-        local_pe_v = self.plib.VisibilityFromXYZ(track[0][:3])*track[0][3]
-        for i in range(1, len(track)):
-          if track[i][3] != 0:
-            local_pe_v += self.plib.VisibilityFromXYZ(track[i][:3])*track[i][3]
+        if not torch.is_tensor(track):
+          track = torch.tensor(track, device=device)
+        local_pe_v = torch.sum(self.plib.VisibilityFromXYZ(track[:, :3])*(track[:, 3].unsqueeze(-1)), axis = 0)
 
         if len(self.qe_v) == 0:
-          self.qe_v = np.ones(local_pe_v.shape)
+          self.qe_v = torch.ones(local_pe_v.shape, device=device)
         res = local_pe_v * self.global_qe * self.qe_v
-        if use_numpy:
+        if use_tensor:
           return res
         
         return Flash(res.tolist())
@@ -49,17 +50,6 @@ class FlashAlgo():
         Returns
           gradient value of the fill_estimate step for track
         """
-        num_voxel_x = self.plib.shape[0]
-        x_min, x_max = self.plib.VoxID2Position(0)[0], self.plib.VoxID2Position(num_voxel_x-1)[0]
-        res = []
-        for qpt in track: 
-          x, y, z, q = qpt
-          # skip photon library calculations if q is 0
-          if q == 0:
-            res.append(np.zeros(self.plib.num_pmt))
-          else:
-            vid = self.plib.Position2VoxID([x, y, z])
-            gap = self.plib.VoxID2Position(vid+1)[0] - self.plib.VoxID2Position(vid)[0]
-            grad = (self.plib.Visibility(vid+1) - self.plib.Visibility(vid)) / gap
-            res.append(grad * q * self.global_qe * self.qe_v)
-        return res
+        vids = self.plib.Position2VoxID(track[:, :3])
+        grad = (self.plib.Visibility(vids+1) - self.plib.Visibility(vids)) / self.plib.gap
+        return grad * (track[:, 3].unsqueeze(-1)) * self.global_qe * self.qe_v

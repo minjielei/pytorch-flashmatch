@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import copy
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class FlashMatchInput:
     def __init__(self):
@@ -16,8 +17,8 @@ class FlashMatchInput:
         self.true_match = []
 
     def make_torch_input(self):
-        target = torch.Tensor(self.flash_v)
-        input = [torch.Tensor(qcluster) for qcluster in self.qcluster_v]
+        target = torch.tensor(self.flash_v, device=device)
+        input = [torch.tensor(qcluster, device=device) for qcluster in self.qcluster_v]
         return input, target
 
 class Flash(list):
@@ -120,8 +121,8 @@ def get_x_constraints(input, detector_specs):
     """
     vol_x_min = detector_specs['ActiveVolumeMin'][0]
     vol_x_max = detector_specs['ActiveVolumeMax'][0]
-    track_x_min, track_x_max = torch.min(input[:, 0]), torch.max(input[:, 0])
-    x_min = torch.min(torch.min(vol_x_min - track_x_min, vol_x_max - track_x_max), torch.zeros(1)).item()
-    x_max = torch.max(vol_x_min - track_x_min, vol_x_max - track_x_max).item()
+    track_x_min, track_x_max = torch.min(input[:, 0]).item(), torch.max(input[:, 0]).item()
+    x_min = min(vol_x_min - track_x_min, vol_x_max - track_x_max, 0)
+    x_max = max(vol_x_min - track_x_min, vol_x_max - track_x_max)
     return x_min, x_max
     

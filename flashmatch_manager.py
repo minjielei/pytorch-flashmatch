@@ -1,9 +1,11 @@
 import numpy as np
 import torch
+from torch._C import device
 import yaml
 from toymc import ToyMC
 from algorithms.match_model import GradientModel, PoissonMatchLoss, EarlyStopping
 from utils import get_x_constraints
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class FlashMatchManager():
     """
@@ -27,16 +29,16 @@ class FlashMatchManager():
         self.reader = ToyMC(photon_library, detector_file, cfg)
         self.flash_algo = self.reader.flash_algo
         self.loss_fn = PoissonMatchLoss()
-        self.model = None
-        self.optimizer = None
-        
 
     def make_flashmatch_input(self, num_tracks):
         return self.reader.make_flashmatch_input(num_tracks)
 
-    def train(self, input, target):
+    def train(self, input, target, true_x):
         constraints = get_x_constraints(input, self.detector_specs) 
         self.model = GradientModel(self.flash_algo, constraints)
+        self.model.to(device)
+        # from torch.utils.tensorboard import SummaryWriter
+        # writer = SummaryWriter()
 
         # run one iteration to determine optimal initial learning rate
         pred = self.model(input)
@@ -59,6 +61,10 @@ class FlashMatchManager():
             self.optimizer.step()
             scheduler.step(loss)
             early_stopping(loss)
+
+            # writer.add_scalar("Loss", loss, i)
+            # writer.add_scalar("Reco X - True X", self.model.xshift.x - true_x, i)
+            # writer.add_scalar("Reco PE - True PE", torch.sum(pred) - torch.sum(target[match.item()]), i)
             if early_stopping.early_stop:
                 break
 

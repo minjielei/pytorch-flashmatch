@@ -1,4 +1,5 @@
-test*.ipynb
+test*
 **/plib.h5
 **/.ipynb*
 __pycache__/
+runs
