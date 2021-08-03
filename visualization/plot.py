@@ -43,11 +43,7 @@ def plot_track(toymc, track, npts=100):
     xyzs[:,1] = [ymin + i*(ymax-ymin)/npts for i in range(npts)]
     xyzs[:,2] = [i*(zmax - zmin)/npts + zmin for i in range(npts)]
     # let's generate visibility per pmt
-    vis_array=[0.]*toymc.detector['NOpDets']
-    for ipt in range(npts):
-        for pmt in range(toymc.detector['NOpDets']):
-            vis = toymc.plib.VisibilityFromXYZ([xyzs[ipt,0],xyzs[ipt,1],xyzs[ipt,2]],ch=pmt)
-            xyzs[ipt,3] += vis
-            vis_array[pmt] += vis
+    vis_array=toymc.plib.VisibilityFromXYZ(xyzs[:, :3]).cpu().numpy()
+    xyzs[:, 3] = np.sum(vis_array, axis=1)
     # visualize
     return scatter_points(xyzs,color=xyzs[:,3],markersize=3)

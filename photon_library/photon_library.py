@@ -32,6 +32,8 @@ class PhotonLibrary(object):
         self._pmt_pos = (self._pmt_pos - self._min) / (self._max - self._min)
 
     def VisibilityFromXYZ(self, pos, ch=None):
+        if not torch.is_tensor(pos):
+          pos = torch.tensor(pos, device=device)
         return self.Visibility(self.Position2VoxID(pos), ch)
 
     def Visibility(self, vids, ch=None):
