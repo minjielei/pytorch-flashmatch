@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from torch._C import device
 import yaml
 from toymc import ToyMC
 from algorithms.match_model import GradientModel, PoissonMatchLoss, EarlyStopping
@@ -33,7 +32,7 @@ class FlashMatchManager():
     def make_flashmatch_input(self, num_tracks):
         return self.reader.make_flashmatch_input(num_tracks)
 
-    def train(self, input, target, true_x):
+    def train(self, input, target):
         constraints = get_x_constraints(input, self.detector_specs) 
         self.model = GradientModel(self.flash_algo, constraints)
         self.model.to(device)
@@ -68,7 +67,36 @@ class FlashMatchManager():
             if early_stopping.early_stop:
                 break
 
-        return loss.item(), match.item(), self.model.xshift.x.item()
+        return loss.item(), match.item(), self.model.xshift.x.item(), torch.sum(pred).item()
 
-    def run_flash_match(self, flashmatch_input):
-        pass
+    def match(self, flashmatch_input):
+        # import torch.multiprocessing as mp
+        # mp.set_start_method('spawn')
+        # num_processes = len(track_v)
+        # processes = []
+        # for rank in range(num_processes):
+        #     p = mp.Process(target=self.train, args=(track_v[rank], flash_v))
+        #     p.start()
+        #     processes.append(p)
+        # for p in processes:
+        #     p.join()
+        track_v, flash_v = flashmatch_input.make_torch_input()
+        matches = []
+        reco_x = []
+        for i, track in enumerate(track_v):
+            loss, match, x, pe = self.train(track, flash_v)
+            matches.append(match)
+            reco_x.append(x)
+
+            track_id = flashmatch_input.qcluster_v[i].idx
+            true_x = flashmatch_input.x_shift[i]
+            true_pe = np.sum(flashmatch_input.flash_v[track_id])
+            self.print_match_result(i, track_id, match, loss, true_x, x, true_pe, pe)
+            
+        return matches, reco_x
+
+    def print_match_result(self, id, track_id, flash_id, loss, true_x, reco_x, true_pe, reco_pe):
+        print('Match ID: ', id)
+        correct = (track_id == flash_id)
+        template = """TPC/PMT IDs {}/{} Correct? {}, Loss {:.5f}, reco vs. true: X {:.5f} vs. {:.5f}, PE {:.5f} vs. {:.5f}"""
+        print(template.format(track_id, flash_id, correct, loss, true_x, reco_x, true_pe, reco_pe))

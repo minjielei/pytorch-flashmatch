@@ -55,7 +55,7 @@ class EarlyStopping():
         elif self.best_loss - loss < self.min_delta:
             self.counter += 1
             if self.counter >= self.patience:
-                print('INFO: Early stopping')
+                # print('INFO: Early stopping')
                 self.early_stop = True
         else:
             self.counter = 0

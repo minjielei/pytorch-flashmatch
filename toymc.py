@@ -79,6 +79,7 @@ class ToyMC():
             if len(qcluster) > 0:
                 result.qcluster_v.append(qcluster)
                 result.raw_qcluster_v.append(raw_qcluster)
+                result.x_shift.append(-dx)
             if np.sum(flash) > 0:
                 result.flash_v.append(flash)
             if valid_match:

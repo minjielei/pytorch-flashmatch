@@ -11,8 +11,10 @@ class FlashMatchInput:
         self.qcluster_v = []
         # "RAW" QCluster (optional, may not be present, before x-shift)
         self.raw_qcluster_v = []
-        # trajectory points
+        # trajectory segment points
         self.track_v = []
+        # dx between qcluster and raw_qcluster
+        self.x_shift = []
         # True matches, an array of integer-pairs.
         self.true_match = []
 
