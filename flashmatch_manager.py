@@ -24,6 +24,7 @@ class FlashMatchManager():
         self.scheduler_factor = config['SchedulerFactor']
         self.stopping_patience = config['StoppingPatience']
         self.stopping_delta = config['StoppingDelta']
+        self.num_processes = config['NumProcesses']
 
         self.reader = ToyMC(photon_library, detector_file, cfg)
         self.flash_algo = self.reader.flash_algo
@@ -32,32 +33,34 @@ class FlashMatchManager():
     def make_flashmatch_input(self, num_tracks):
         return self.reader.make_flashmatch_input(num_tracks)
 
-    def train(self, input, target):
+    def train(self, input, target=None):
+        if target is None:
+            target = self.target
         constraints = get_x_constraints(input, self.detector_specs) 
-        self.model = GradientModel(self.flash_algo, constraints)
-        self.model.to(device)
+        model = GradientModel(self.flash_algo, constraints)
+        model.to(device)
         # from torch.utils.tensorboard import SummaryWriter
         # writer = SummaryWriter()
 
         # run one iteration to determine optimal initial learning rate
-        pred = self.model(input)
+        pred = model(input)
         loss, match = self.loss_fn(pred, target)
         for lr, loss_threshold in zip(self.lr_range, self.loss_thresholds):
             if loss < loss_threshold:
                 self.init_lr = lr
                 break
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.init_lr)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, min_lr=self.min_lr, factor=self.scheduler_factor)
+        optimizer = torch.optim.Adam(model.parameters(), lr=self.init_lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, min_lr=self.min_lr, factor=self.scheduler_factor)
         early_stopping = EarlyStopping(self.stopping_patience, self.stopping_delta)
 
         for i in range(self.max_iteration):
-            pred = self.model(input)
+            pred = model(input)
             loss, match = self.loss_fn(pred, target)
 
-            self.optimizer.zero_grad()
+            optimizer.zero_grad()
             loss.backward()
-            self.optimizer.step()
+            optimizer.step()
             scheduler.step(loss)
             early_stopping(loss)
 
@@ -67,31 +70,29 @@ class FlashMatchManager():
             if early_stopping.early_stop:
                 break
 
-        return loss.item(), match.item(), self.model.xshift.x.item(), torch.sum(pred).item()
+        return loss.item(), match.item(), model.xshift.x.item(), torch.sum(pred).item()
 
     def match(self, flashmatch_input):
-        # import torch.multiprocessing as mp
-        # mp.set_start_method('spawn')
-        # num_processes = len(track_v)
-        # processes = []
-        # for rank in range(num_processes):
-        #     p = mp.Process(target=self.train, args=(track_v[rank], flash_v))
-        #     p.start()
-        #     processes.append(p)
-        # for p in processes:
-        #     p.join()
+        
         track_v, flash_v = flashmatch_input.make_torch_input()
+        self.target = flash_v
         matches = []
         reco_x = []
-        for i, track in enumerate(track_v):
-            loss, match, x, pe = self.train(track, flash_v)
-            matches.append(match)
-            reco_x.append(x)
+        idx = 0
 
-            track_id = flashmatch_input.qcluster_v[i].idx
-            true_x = flashmatch_input.x_shift[i]
-            true_pe = np.sum(flashmatch_input.flash_v[track_id])
-            self.print_match_result(i, track_id, match, loss, true_x, x, true_pe, pe)
+        import torch.multiprocessing as mp
+        from multiprocessing.pool import ThreadPool
+        ctx = mp.get_context("spawn")
+        with ThreadPool(processes=self.num_processes) as pool:
+            for loss, match, x, pe in pool.imap(self.train, track_v):
+                matches.append(match)
+                reco_x.append(x)
+
+                track_id = flashmatch_input.qcluster_v[idx].idx
+                true_x = flashmatch_input.x_shift[idx]
+                true_pe = np.sum(flashmatch_input.flash_v[track_id])
+                self.print_match_result(idx, track_id, match, loss, true_x, x, true_pe, pe)
+                idx += 1
             
         return matches, reco_x
 
