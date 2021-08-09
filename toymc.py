@@ -1,6 +1,6 @@
 from algorithms.lightpath import LightPath
 from algorithms.flashalgo import FlashAlgo
-from utils import FlashMatchInput
+from flashmatch_types import FlashMatchInput
 import numpy as np
 import yaml
 
@@ -71,6 +71,7 @@ class ToyMC():
             qcluster.idx = idx
             qcluster.true_time = ftime
             raw_qcluster.true_time = ftime
+            result.x_shift.append(-dx)
             # Drop qcluster points that are outside the recording range
             if self.truncate_tpc:
                 qcluster.drop(min_tpcx, max_tpcx)
@@ -79,7 +80,6 @@ class ToyMC():
             if len(qcluster) > 0:
                 result.qcluster_v.append(qcluster)
                 result.raw_qcluster_v.append(raw_qcluster)
-                result.x_shift.append(-dx)
             if np.sum(flash) > 0:
                 result.flash_v.append(flash)
             if valid_match:

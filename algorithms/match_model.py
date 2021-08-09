@@ -6,10 +6,10 @@ class GradientModel(torch.nn.Module):
     """
     Gradient-based optimization model for flash matching
     """
-    def __init__(self, flash_algo, constraints):
+    def __init__(self, flash_algo, dx0, dx_min, dx_max):
         super(GradientModel, self).__init__()
         self.flash_algo = flash_algo
-        self.xshift = XShift(constraints)
+        self.xshift = XShift(dx0, dx_min, dx_max)
         self.genflash = GenFlash.apply
 
     def forward(self, input):
@@ -23,11 +23,10 @@ class PoissonMatchLoss(nn.Module):
     """
     def __init__(self):
         super(PoissonMatchLoss, self).__init__()
-        self.poisson_nll = nn.PoissonNLLLoss(log_input=False, full=True, reduction='none')
+        self.poisson_nll = nn.PoissonNLLLoss(log_input=False, full=True)
 
     def forward(self, input, target):
-        loss, match = torch.min(torch.mean(self.poisson_nll(input.expand(target.shape[0], -1), target), axis=1), 0)
-        return loss, match
+        return self.poisson_nll(input, target)
 
 class EarlyStopping():
     """
@@ -57,5 +56,3 @@ class EarlyStopping():
             if self.counter >= self.patience:
                 # print('INFO: Early stopping')
                 self.early_stop = True
-        else:
-            self.counter = 0

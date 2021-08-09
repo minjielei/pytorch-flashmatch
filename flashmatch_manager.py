@@ -1,9 +1,9 @@
 import numpy as np
 import torch
 import yaml
+import itertools
 from toymc import ToyMC
 from algorithms.match_model import GradientModel, PoissonMatchLoss, EarlyStopping
-from utils import get_x_constraints
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class FlashMatchManager():
@@ -18,37 +18,112 @@ class FlashMatchManager():
         self.detector_specs = yaml.load(open(detector_file), Loader=yaml.Loader)['DetectorSpecs']
         self.max_iteration = int(config['MaxIteration'])
         self.init_lr = config['InitLearningRate']
-        self.lr_range = config['LearningRateRange']
-        self.loss_thresholds = config['LossThresholds']
         self.min_lr = config['MinLearningRate']
         self.scheduler_factor = config['SchedulerFactor']
         self.stopping_patience = config['StoppingPatience']
         self.stopping_delta = config['StoppingDelta']
         self.num_processes = config['NumProcesses']
+        self.loss_threshold = config['LossThreshold']
 
         self.reader = ToyMC(photon_library, detector_file, cfg)
         self.flash_algo = self.reader.flash_algo
         self.loss_fn = PoissonMatchLoss()
 
+        self.vol_xmin = self.detector_specs["ActiveVolumeMin"][0]
+        self.vol_xmax = self.detector_specs["ActiveVolumeMax"][0]
+        self.drift_velocity = self.detector_specs["DriftVelocity"]
+        self.time_shift = config['BeamTimeShift']
+        self.touching_track_window = config['TouchingTrackWindow']
+        self.offset = config['Offset']
+
     def make_flashmatch_input(self, num_tracks):
+        """
+        Make flash matching input using configured reader
+        --------
+        Arguments
+          num_tracks: number of tracks to generate
+        --------
+        Returns
+          FlashMatchInput object
+        """
         return self.reader.make_flashmatch_input(num_tracks)
 
-    def train(self, input, target=None):
-        if target is None:
-            target = self.target
-        constraints = get_x_constraints(input, self.detector_specs) 
-        model = GradientModel(self.flash_algo, constraints)
+    def match(self, flashmatch_input):
+        """
+        Run flash matching on flashmatch input
+        --------
+        Arguments
+          flashmatch_input: FlashMatchInput object
+        --------
+        Returns
+          FlashMatch object storing the result of the match
+        """
+        paramlist = list(itertools.product(flashmatch_input.qcluster_v, flashmatch_input.flash_v))
+        idx = 0
+        import torch.multiprocessing as mp
+        from multiprocessing.pool import ThreadPool
+        ctx = mp.get_context("spawn")
+        with ThreadPool(processes=self.num_processes) as pool:
+            for loss, x, pe in pool.imap(self.one_pmt_match, paramlist):
+                # matches.append(match)
+                # reco_x.append(x)
+
+                track_id = paramlist[idx][0].idx
+                flash_id = paramlist[idx][1].idx
+                true_x = flashmatch_input.x_shift[flash_id]
+                true_pe = np.sum(flashmatch_input.flash_v[track_id])
+                self.print_match_result(track_id, track_id, flash_id, loss, true_x, x, true_pe, pe)
+                idx += 1
+
+    def one_pmt_match(self, params):
+        """
+        Run flash matching on for one pair of qcluster and flash input
+        --------
+        Arguments
+          params: tuple of (qcluster, flash)
+        --------
+        Returns
+          loss, reco_x, reco_pe
+        """
+        qcluster, flash = params
+        track_xmin, track_xmax = qcluster.x_min_max()
+        dx_min, dx_max = self.vol_xmin - track_xmin, self.vol_xmax - track_xmax
+        dx0 = - (flash.time - self.time_shift) * self.drift_velocity
+
+        tolerence = self.touching_track_window/2. * self.drift_velocity
+        contained_tpc0 = (dx0>=dx_min-tolerence) and (dx0<=dx_max+tolerence)
+        contained_tpc1 = (-dx0>=dx_min-tolerence) and (-dx0<=dx_max+tolerence)
+        # Inspect, in either assumption (original track is in tpc0 or tpc1), the track is contained in the whole active volume or not
+        if contained_tpc0:
+            dx0 = max(dx0, self.vol_xmin - track_xmin + self.offset)
+        elif contained_tpc1:
+            dx0 = min(-dx0, self.vol_xmax - track_xmax - self.offset)
+        else:
+            return np.inf, np.inf, np.inf
+
+        input = torch.tensor(qcluster, device=device)
+        target = torch.tensor(flash, device=device)
+        return self.train(input, target, dx0, dx_min, dx_max)
+
+    def train(self, input, target, dx0, dx_min, dx_max):
+        """
+        Run gradient descent model on input
+        --------
+        Arguments
+          input: qcluster input as tensor
+          target: flash target as tensor
+          dx0: initial xshift in cm
+          dx_min: miminal allowed value of dx in cm
+          dx_max: maximum allowed value of dx in cm
+        --------
+        Returns
+          loss, reco_x, reco_pe
+        """
+        model = GradientModel(self.flash_algo, dx0, dx_min, dx_max)
         model.to(device)
+        
         # from torch.utils.tensorboard import SummaryWriter
         # writer = SummaryWriter()
-
-        # run one iteration to determine optimal initial learning rate
-        pred = model(input)
-        loss, match = self.loss_fn(pred, target)
-        for lr, loss_threshold in zip(self.lr_range, self.loss_thresholds):
-            if loss < loss_threshold:
-                self.init_lr = lr
-                break
 
         optimizer = torch.optim.Adam(model.parameters(), lr=self.init_lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, min_lr=self.min_lr, factor=self.scheduler_factor)
@@ -56,7 +131,7 @@ class FlashMatchManager():
 
         for i in range(self.max_iteration):
             pred = model(input)
-            loss, match = self.loss_fn(pred, target)
+            loss = self.loss_fn(pred, target)
 
             optimizer.zero_grad()
             loss.backward()
@@ -65,39 +140,41 @@ class FlashMatchManager():
             early_stopping(loss)
 
             # writer.add_scalar("Loss", loss, i)
-            # writer.add_scalar("Reco X - True X", self.model.xshift.x - true_x, i)
+            # writer.add_scalar("Reco X", model.xshift.dx-true_x, i)
             # writer.add_scalar("Reco PE - True PE", torch.sum(pred) - torch.sum(target[match.item()]), i)
-            if early_stopping.early_stop:
+            if loss > self.loss_threshold or early_stopping.early_stop:
+                # print("stopped at iteration ", i)
                 break
 
-        return loss.item(), match.item(), model.xshift.x.item(), torch.sum(pred).item()
+        return loss.item(), model.xshift.dx.item(), torch.sum(pred).item()
 
-    def match(self, flashmatch_input):
-        
-        track_v, flash_v = flashmatch_input.make_torch_input()
-        self.target = flash_v
-        matches = []
-        reco_x = []
-        idx = 0
-
-        import torch.multiprocessing as mp
-        from multiprocessing.pool import ThreadPool
-        ctx = mp.get_context("spawn")
-        with ThreadPool(processes=self.num_processes) as pool:
-            for loss, match, x, pe in pool.imap(self.train, track_v):
-                matches.append(match)
-                reco_x.append(x)
-
-                track_id = flashmatch_input.qcluster_v[idx].idx
-                true_x = flashmatch_input.x_shift[idx]
-                true_pe = np.sum(flashmatch_input.flash_v[track_id])
-                self.print_match_result(idx, track_id, match, loss, true_x, x, true_pe, pe)
-                idx += 1
-            
-        return matches, reco_x
-
+    # helper function to print out match results
     def print_match_result(self, id, track_id, flash_id, loss, true_x, reco_x, true_pe, reco_pe):
         print('Match ID: ', id)
-        correct = (track_id == flash_id)
-        template = """TPC/PMT IDs {}/{} Correct? {}, Loss {:.5f}, reco vs. true: X {:.5f} vs. {:.5f}, PE {:.5f} vs. {:.5f}"""
-        print(template.format(track_id, flash_id, correct, loss, true_x, reco_x, true_pe, reco_pe))
+        # correct = (track_id == flash_id)
+        template = """TPC/PMT IDs {}/{}, Loss {:.5f}, reco vs. true: X {:.5f} vs. {:.5f}, PE {:.5f} vs. {:.5f}"""
+        print(template.format(track_id, flash_id, loss, true_x, reco_x, true_pe, reco_pe))
+
+    # compute initial loss on flashmatch_input to study loss separation
+    def initial_loss(self, flashmatch_input):
+        true_loss = []
+        paramlist = list(itertools.product(flashmatch_input.qcluster_v, flashmatch_input.flash_v))
+        for qcluster, flash in paramlist:
+            input = torch.tensor(qcluster, device=device)
+            target = torch.tensor(flash, device=device)
+            track_xmin, track_xmax = qcluster.x_min_max()
+            dx_min, dx_max = self.vol_xmin - track_xmin, self.vol_xmax - track_xmax
+            dx0 = - (flash.time - self.time_shift) * self.drift_velocity
+            if dx0 >= dx_min and dx0 <= dx_max:
+                if qcluster.idx == flash.idx:
+                    true_loss.append(self.train_one_step(input, target, dx0, dx_min, dx_max))
+        return true_loss
+
+    # train model for one step on flashmatch input to get the initial loss
+    def train_one_step(self, input, target, dx0, dx_min, dx_max):
+        model = GradientModel(self.flash_algo, dx0, dx_min, dx_max)
+        model.to(device)
+
+        pred = model(input)
+        loss = self.loss_fn(pred, target)
+        return loss.item()

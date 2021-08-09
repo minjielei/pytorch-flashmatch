@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import yaml
-from utils import Flash
+from flashmatch_types import Flash
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class FlashAlgo():

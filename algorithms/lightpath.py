@@ -1,6 +1,6 @@
 import numpy as np
 import yaml
-from utils import QCluster
+from flashmatch_types import QCluster
 
 class LightPath():
     def __init__(self, detector_specs, cfg_file=None):
