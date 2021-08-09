@@ -70,8 +70,8 @@ class FlashMatchManager():
 
                 track_id = paramlist[idx][0].idx
                 flash_id = paramlist[idx][1].idx
-                true_x = flashmatch_input.x_shift[flash_id]
-                true_pe = np.sum(flashmatch_input.flash_v[track_id])
+                true_x = flashmatch_input.x_shift[track_id]
+                true_pe = flashmatch_input.flash_v[track_id].sum()
                 self.print_match_result(track_id, track_id, flash_id, loss, true_x, x, true_pe, pe)
                 idx += 1
 
@@ -86,7 +86,7 @@ class FlashMatchManager():
           loss, reco_x, reco_pe
         """
         qcluster, flash = params
-        track_xmin, track_xmax = qcluster.x_min_max()
+        track_xmin, track_xmax = qcluster.xmin, qcluster.xmax
         dx_min, dx_max = self.vol_xmin - track_xmin, self.vol_xmax - track_xmax
         dx0 = - (flash.time - self.time_shift) * self.drift_velocity
 
@@ -101,8 +101,8 @@ class FlashMatchManager():
         else:
             return np.inf, np.inf, np.inf
 
-        input = torch.tensor(qcluster, device=device)
-        target = torch.tensor(flash, device=device)
+        input = qcluster.qpt_v
+        target = flash.pe_v
         return self.train(input, target, dx0, dx_min, dx_max)
 
     def train(self, input, target, dx0, dx_min, dx_max):

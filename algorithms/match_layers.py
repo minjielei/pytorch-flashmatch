@@ -29,7 +29,7 @@ class GenFlash(torch.autograd.Function):
     def forward(ctx, input, flash_algo):
         ctx.save_for_backward(input)
         ctx.flash_algo = flash_algo
-        return flash_algo.fill_estimate(input, use_tensor=True)
+        return flash_algo.fill_estimate(input)
 
     @staticmethod
     def backward(ctx, grad_output):

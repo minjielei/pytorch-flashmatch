@@ -27,7 +27,6 @@ class LightPath():
         Returns
         """
         dist = np.linalg.norm(pt1 - pt2)
-        q_pt = []
         # segment less than gap threshold
         if dist < self.gap:
             mid_pt = (pt1 + pt2) / 2 
@@ -61,14 +60,16 @@ class LightPath():
           a qcluster instance
         """
         res = QCluster([])
+        qpt_v = []
 
         # add first point of trajectory
-        res.append([track[0][0], track[0][1], track[0][2], 0.])
+        qpt_v.append([track[0][0], track[0][1], track[0][2], 0.])
 
         for i in range(len(track)-1):
-            self.fill_qcluster(np.array(track[i]), np.array(track[i+1]), res)
+            self.fill_qcluster(np.array(track[i]), np.array(track[i+1]), qpt_v)
 
         # add last point of trajectory
-        res.append([track[-1][0], track[-1][1], track[-1][2], 0.])
+        qpt_v.append([track[-1][0], track[-1][1], track[-1][2], 0.])
+        res.fill(qpt_v)
 
         return res

@@ -1,6 +1,6 @@
 from algorithms.lightpath import LightPath
 from algorithms.flashalgo import FlashAlgo
-from flashmatch_types import FlashMatchInput
+from flashmatch_types import FlashMatchInput, Flash
 import numpy as np
 import yaml
 
@@ -61,13 +61,13 @@ class ToyMC():
             raw_qcluster = self.make_qcluster(track)
             raw_qcluster.idx = idx
             # Create PMT PE spectrum from raw qcluster
-            flash = self.make_flash(raw_qcluster)
+            flash = self.make_flash(raw_qcluster.qpt_v)
             flash.idx = idx
             # Apply x shift and set flash time
             ftime, dx = xt_v[idx]
             flash.time = ftime
             flash.true_time = ftime
-            qcluster = raw_qcluster + dx
+            qcluster = raw_qcluster.shift(dx)
             qcluster.idx = idx
             qcluster.true_time = ftime
             raw_qcluster.true_time = ftime
@@ -76,11 +76,11 @@ class ToyMC():
             if self.truncate_tpc:
                 qcluster.drop(min_tpcx, max_tpcx)
             # check for orphan
-            valid_match = len(qcluster) > 0 and np.sum(flash) > 0
+            valid_match = len(qcluster) > 0 and flash.sum() > 0
             if len(qcluster) > 0:
                 result.qcluster_v.append(qcluster)
                 result.raw_qcluster_v.append(raw_qcluster)
-            if np.sum(flash) > 0:
+            if flash.sum() > 0:
                 result.flash_v.append(flash)
             if valid_match:
                 result.true_match.append((idx,idx))
@@ -164,7 +164,7 @@ class ToyMC():
         # apply variation if needed
         if self.ly_variation > 0:
             var = abs(np.random.normal(1.0, self.ly_variation, len(qcluster)))
-            for idx in range(len(qcluster)): qcluster[idx][-1] *= var[idx]
+            for idx in range(len(qcluster)): qcluster.qpt_v[idx][-1] *= var[idx]
 
         return qcluster
 
@@ -178,14 +178,15 @@ class ToyMC():
         Returns
           a flash instance 
         """
-        flash = self.flash_algo.fill_estimate(qcluster)
+        flash = Flash()
+        flash.pe_v = self.flash_algo.fill_estimate(qcluster)
         # apply variation if needed
         var = np.ones(shape=(len(flash)),dtype=np.float32)
         if self.pe_variation>0.:
             var = abs(np.random.normal(1.0,self.pe_variation,len(flash)))
         for idx in range(len(flash)):
-            estimate = float(int(np.random.poisson(flash[idx] * var[idx])))
-            flash[idx] = estimate
+            estimate = float(int(np.random.poisson(flash.pe_v[idx].item() * var[idx])))
+            flash.pe_v[idx] = estimate
             flash.pe_err_v.append(np.sqrt(estimate))
 
         return flash

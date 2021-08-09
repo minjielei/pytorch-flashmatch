@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import yaml
-from flashmatch_types import Flash
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class FlashAlgo():
@@ -34,11 +33,7 @@ class FlashAlgo():
 
         if len(self.qe_v) == 0:
           self.qe_v = torch.ones(local_pe_v.shape, device=device)
-        res = local_pe_v * self.global_qe * self.qe_v
-        if use_tensor:
-          return res
-        
-        return Flash(res.tolist())
+        return local_pe_v * self.global_qe * self.qe_v
 
     def backward_gradient(self, track):
         """
