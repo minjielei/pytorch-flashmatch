@@ -28,6 +28,7 @@ class ToyMC():
         self.periodPMT = config["PeriodPMT"]
         self.ly_variation = config["LightYieldVariation"]
         self.pe_variation = config["PEVariation"]
+        self.posx_variation = config['PosXVariation']
         self.truncate_tpc = config["TruncateTPC"]
         self.num_tracks = config["NumTracks"]
         if 'NumpySeed' in config:
@@ -71,7 +72,6 @@ class ToyMC():
             qcluster.idx = idx
             qcluster.true_time = ftime
             raw_qcluster.true_time = ftime
-            result.x_shift.append(-dx)
             # Drop qcluster points that are outside the recording range
             if self.truncate_tpc:
                 qcluster.drop(min_tpcx, max_tpcx)
@@ -165,6 +165,9 @@ class ToyMC():
         if self.ly_variation > 0:
             var = abs(np.random.normal(1.0, self.ly_variation, len(qcluster)))
             for idx in range(len(qcluster)): qcluster.qpt_v[idx][-1] *= var[idx]
+        if self.posx_variation > 0:
+            var = abs(np.random.normal(1.0, self.posx_variation/qcluster.xsum(), len(qcluster)))
+            for idx in range(len(qcluster)): qcluster.qpt_v[idx][0] *= var[idx]
 
         return qcluster
 

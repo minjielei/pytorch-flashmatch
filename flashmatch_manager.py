@@ -3,6 +3,7 @@ import torch
 import yaml
 import itertools
 from toymc import ToyMC
+from flashmatch_types import FlashMatch
 from algorithms.match_model import GradientModel, PoissonMatchLoss, EarlyStopping
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -58,22 +59,21 @@ class FlashMatchManager():
         Returns
           FlashMatch object storing the result of the match
         """
+        match = FlashMatch(len(flashmatch_input.qcluster_v), len(flashmatch_input.flash_v))
         paramlist = list(itertools.product(flashmatch_input.qcluster_v, flashmatch_input.flash_v))
-        idx = 0
+
         import torch.multiprocessing as mp
         from multiprocessing.pool import ThreadPool
         ctx = mp.get_context("spawn")
         with ThreadPool(processes=self.num_processes) as pool:
-            for loss, x, pe in pool.imap(self.one_pmt_match, paramlist):
-                # matches.append(match)
-                # reco_x.append(x)
-
+            for idx, (loss, reco_x, reco_pe) in enumerate(pool.imap(self.one_pmt_match, paramlist)):
                 track_id = paramlist[idx][0].idx
                 flash_id = paramlist[idx][1].idx
-                true_x = flashmatch_input.x_shift[track_id]
-                true_pe = flashmatch_input.flash_v[track_id].sum()
-                self.print_match_result(track_id, track_id, flash_id, loss, true_x, x, true_pe, pe)
-                idx += 1
+                match.loss_matrix[track_id, flash_id] = loss
+                match.reco_x_matrix[track_id, flash_id] = reco_x
+                match.reco_pe_matrix[track_id, flash_id] = reco_pe
+        match.bipartite_match()
+        return match
 
     def one_pmt_match(self, params):
         """
@@ -148,21 +148,14 @@ class FlashMatchManager():
 
         return loss.item(), model.xshift.dx.item(), torch.sum(pred).item()
 
-    # helper function to print out match results
-    def print_match_result(self, id, track_id, flash_id, loss, true_x, reco_x, true_pe, reco_pe):
-        print('Match ID: ', id)
-        # correct = (track_id == flash_id)
-        template = """TPC/PMT IDs {}/{}, Loss {:.5f}, reco vs. true: X {:.5f} vs. {:.5f}, PE {:.5f} vs. {:.5f}"""
-        print(template.format(track_id, flash_id, loss, true_x, reco_x, true_pe, reco_pe))
-
     # compute initial loss on flashmatch_input to study loss separation
     def initial_loss(self, flashmatch_input):
         true_loss = []
         paramlist = list(itertools.product(flashmatch_input.qcluster_v, flashmatch_input.flash_v))
         for qcluster, flash in paramlist:
-            input = torch.tensor(qcluster, device=device)
-            target = torch.tensor(flash, device=device)
-            track_xmin, track_xmax = qcluster.x_min_max()
+            input = qcluster.qpt_v
+            target = flash.pe_v
+            track_xmin, track_xmax = qcluster.xmin, qcluster.xmax
             dx_min, dx_max = self.vol_xmin - track_xmin, self.vol_xmax - track_xmax
             dx0 = - (flash.time - self.time_shift) * self.drift_velocity
             if dx0 >= dx_min and dx0 <= dx_max:

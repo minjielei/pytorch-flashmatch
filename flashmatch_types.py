@@ -1,6 +1,7 @@
 import numpy as np
 import copy
 import torch
+from scipy.optimize import linear_sum_assignment
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class FlashMatchInput:
@@ -13,14 +14,22 @@ class FlashMatchInput:
         self.raw_qcluster_v = []
         # trajectory segment points
         self.track_v = []
-        # dx between qcluster and raw_qcluster
-        self.x_shift = []
         # True matches, an array of integer-pairs.
         self.true_match = []
 
 class FlashMatch:
-    def __init__(self):
-        pass
+    def __init__(self, num_qclusters, num_flashes):
+        self.loss_matrix = np.zeros((num_qclusters, num_flashes))
+        self.reco_x_matrix = np.zeros((num_qclusters, num_flashes))
+        self.reco_pe_matrix = np.zeros((num_qclusters, num_flashes))
+    
+    def bipartite_match(self):
+        row_idx, col_idx = linear_sum_assignment(self.loss_matrix)
+        self.tpc_ids = row_idx
+        self.flash_ids = col_idx
+        self.loss_v = self.loss_matrix[row_idx, col_idx]
+        self.reco_x_v = self.reco_x_matrix[row_idx, col_idx]
+        self.reco_pe_v = self.reco_pe_matrix[row_idx, col_idx]
 
 class Flash:
     def __init__(self, *args):
@@ -36,7 +45,7 @@ class Flash:
     def sum(self):
         if len(self.pe_v) == 0:
             return 0
-        return torch.sum(self.pe_v)
+        return torch.sum(self.pe_v).item()
 
 class QCluster:
     def __init__(self, *args):
@@ -47,6 +56,25 @@ class QCluster:
 
     def __len__(self):
         return len(self.qpt_v)
+
+    # total length of the track
+    def length(self):
+        res = 0
+        for i in range(1, len(self.qpt_v)):
+            res += torch.linalg.norm(self.qpt_v[i, :3] - self.qpt_v[i-1, :3]).item()
+        return res
+
+    # sum over charge 
+    def sum(self):
+        if len(self.qpt_v) == 0:
+            return 0
+        return torch.sum(self.qpt_v[:, -1]).item()
+
+    # sum over x coordinates of the track
+    def xsum(self):
+        if len(self.qpt_v) == 0:
+            return 0
+        return torch.sum(self.qpt_v[:, 0]).item()
 
     # shift qcluster_v by given dx
     def shift(self, dx):
