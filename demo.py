@@ -98,3 +98,23 @@ def attribute_names():
         'flash_time',
         'flash_time_true',
     ]
+
+if __name__ == '__main__':
+    import sys, argparse
+
+    parser = argparse.ArgumentParser(description='Run flash matching')
+
+    parser.add_argument('--cfg', '-c', default='data/flashmatch.cfg')
+    parser.add_argument('--det', '-d', default='data/detector_specs.yml')
+    parser.add_argument('--outfile', '-o', default='')
+    parser.add_argument('--ntracks', '-nt', default = 10)
+    parser.add_argument('--nentries', '-ne', default=1)
+    args = parser.parse_args()
+
+    cfg_file = args.cfg
+    det_file = args.det
+    outfile = args.outfile
+    num_tracks = int(args.ntracks)
+    num_entries = int(args.nentries)
+
+    demo(cfg_file, det_file, outfile, num_tracks, num_entries)
