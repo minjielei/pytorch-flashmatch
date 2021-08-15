@@ -42,6 +42,9 @@ class Flash:
     def __len__(self):
         return len(self.pe_v)
 
+    def to_torch(self):
+        self.pe_v = torch.tensor(self.pe_v, device=device)
+
     def sum(self):
         if len(self.pe_v) == 0:
             return 0
@@ -56,6 +59,15 @@ class QCluster:
 
     def __len__(self):
         return len(self.qpt_v)
+
+    def __iadd__(self, other):
+        if len(self.qpt_v) == 0:
+            self.qpt_v = other.qpt_v
+        else:
+            self.qpt_v = torch.cat(self.qpt.v, other.qpt.v, 0)
+
+    def copy(self):
+        return copy.deepcopy(self)
 
     # total length of the track
     def length(self):
@@ -91,6 +103,8 @@ class QCluster:
         self.xmax = torch.max(self.qpt_v[:, 0]).item()
 
     # drop points outside specified recording range
-    def drop(self, x_min, x_max):
-        mask = (self.qpt_v[:, 0] >= x_min) & (self.qpt_v[:, 0] <= x_max)
+    def drop(self, x_min, x_max, y_min = -np.inf, y_max = np.inf, z_min = -np.inf, z_max = np.inf):
+        mask = (self.qpt_v[:, 0] >= x_min) & (self.qpt_v[:, 0] <= x_max) & \
+            (self.qpt_v[:, 1] >= y_min) & (self.qpt_v[:, 1] <= y_max) & \
+            (self.qpt_v[:, 2] >= z_min) & (self.qpt_v[:, 2] <= z_max)
         self.qpt_v = self.qpt_v[mask]
