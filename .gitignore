@@ -1,5 +1,6 @@
-test*
 **/plib.h5
-**/.ipynb*
-__pycache__/
+**.ipynb
+.ipynb_checkpoints
+__pycache__
+test
 runs

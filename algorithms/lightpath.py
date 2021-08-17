@@ -59,7 +59,7 @@ class LightPath():
         Returns
           a qcluster instance
         """
-        res = QCluster([])
+        res = QCluster()
         qpt_v = []
 
         # add first point of trajectory

@@ -12,6 +12,8 @@ class FlashMatchInput:
         self.qcluster_v = []
         # "RAW" QCluster (optional, may not be present, before x-shift)
         self.raw_qcluster_v = []
+        # "RAW" flashmatch::QCluster_t (optional, may not be present, before active BB cut)
+        self.all_pts_v = []
         # trajectory segment points
         self.track_v = []
         # True matches, an array of integer-pairs.
@@ -34,16 +36,20 @@ class FlashMatch:
 class Flash:
     def __init__(self, *args):
         self.pe_v = []
+        self.pe_true_v = []
         self.pe_err_v = []
         self.idx = np.inf    # index from original larlite vector
         self.time = np.inf   # Flash timing, a candidate T0
-        self.true_time = np.inf  # MCFlash timing
+        self.time_true = np.inf  # MCFlash timing
+        self.dt_next = np.inf   # dt to next flash
+        self.dt_prev = np.inf   # dt to previous flash
 
     def __len__(self):
         return len(self.pe_v)
 
     def to_torch(self):
         self.pe_v = torch.tensor(self.pe_v, device=device)
+        self.pe_true_v = torch.tensor(self.pe_true_v, device=device)
 
     def sum(self):
         if len(self.pe_v) == 0:
@@ -55,16 +61,18 @@ class QCluster:
         self.qpt_v = []
         self.idx = np.inf # index from original larlite vector
         self.time = np.inf # assumed time w.r.t trigger for reconstruction
-        self.true_time = np.inf # time from MCTrack information
+        self.time_true = np.inf # time from MCTrack information
+        self.xshift = 0
 
     def __len__(self):
         return len(self.qpt_v)
 
     def __iadd__(self, other):
         if len(self.qpt_v) == 0:
-            self.qpt_v = other.qpt_v
+            return other
         else:
-            self.qpt_v = torch.cat(self.qpt.v, other.qpt.v, 0)
+            self.qpt_v = torch.cat((self.qpt_v, other.qpt_v), 0)
+        return self
 
     def copy(self):
         return copy.deepcopy(self)

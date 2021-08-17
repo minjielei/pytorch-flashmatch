@@ -22,13 +22,13 @@ class ROOTInput:
         self.qcluster_algo = LightPath(self.detector, cfg_file)
         self.flash_algo = FlashAlgo(plib, cfg_file)
         self.periodTPC = [-1000, 1000]
-        self._tpc_tree_name = "largeant_particletree"
-        self._pmt_tree_name = "opflash_flashtree"
+        self.tpc_tree_name = "largeant_particletree"
+        self.pmt_tree_name = "opflash_flashtree"
         if not cfg_file is None:
             self.configure(cfg_file)
 
-        self._particles = root2array(particleana, self._tpc_tree_name)
-        self._opflash = root2array(opflashana, self._pmt_tree_name)
+        self._particles = root2array(particleana, self.tpc_tree_name)
+        self._opflash = root2array(opflashana, self.pmt_tree_name)
         # check data consistency
         self._entries_to_event = np.unique(self._particles['event']).astype(np.int32)
 
@@ -49,7 +49,7 @@ class ROOTInput:
         self.matching_window = config['MatchingWindow']
         # Whether to exclude flashes too close to each other
         self.exclude_reflashing = config['ExcludeReflashing']
-        self._pc_tree_name = config['TPCTreeName']
+        self.tpc_tree_name = config['TPCTreeName']
         self.pmt_tree_name = config['PMTTreeName']
 
         self.clustering = config['Clustering']
@@ -85,7 +85,7 @@ class ROOTInput:
 
         for pid, p in enumerate(particles):
             # Only use specified PDG code if pdg_code is available
-            if not self._clustering or (len(select_pdg) and (int(p['pdg_code']) not in select_pdg)) or int(p['pdg_code']) in exclude_pdg:
+            if not self.clustering or (len(select_pdg) and (int(p['pdg_code']) not in select_pdg)) or int(p['pdg_code']) in exclude_pdg:
                 continue
             xyzs = np.column_stack([p['x_v'],p['y_v'],p['z_v']]).astype(np.float64)
             if xyzs.shape[0] < 2:
@@ -138,15 +138,15 @@ class ROOTInput:
                 all_pts  += qcluster
                 #time = min(time, np.min(ts_v[i][j]) * 1e-3)
             # If configured, truncate the physical boundary here
-            if self._truncate_tpc_active:
+            if self.truncate_tpc_active:
                 pt_min, pt_max = self.detector['ActiveVolumeMin'], self.detector['ActiveVolumeMax']
-                qcluster.drop(pt_min[0],pt_min[1],pt_min[2],
-                              pt_max[0],pt_max[1],pt_max[2])
+                qcluster.drop(pt_min[0],pt_max[0],pt_min[1],
+                              pt_max[1],pt_min[2],pt_max[2])
             # need to be non-empty
-            if qcluster.empty(): continue
+            if len(qcluster) == 0: continue
             #ts=p['time_v']
-            qcluster.true_time = np.min(ts_v[i]) * 1.e-3
-            all_pts.true_time = qcluster.true_time
+            qcluster.time_true = np.min(ts_v[i]) * 1.e-3
+            all_pts.time_true = qcluster.time_true
             #print('QCluster @ ', qcluster.time_true)
             # if qcluster.min_x() < -365:
             #     print("touching ", qcluster.min_x(), qcluster.time_true)
@@ -167,14 +167,11 @@ class ROOTInput:
             flash.idx = f_idx
             pe_reco_v = f['pe_v']
             pe_true_v = f['pe_true_v']
-            flash.pe_v.resize(self.det.NOpDets(),0.)
-            flash.pe_err_v.resize(self.det.NOpDets(),0.)
-            flash.pe_true_v.resize(self.det.NOpDets(),0.)
             for pmt in range(self.detector['NOpDets']):
-                flash.pe_v[pmt] = pe_reco_v[pmt]
-                flash.pe_err_v[pmt] = 0.
+                flash.pe_v.append(pe_reco_v[pmt])
+                flash.pe_err_v.append(0.)
                 flash.time = f['time']
-                flash.pe_true_v[pmt] = pe_true_v[pmt]
+                flash.pe_true_v.append(pe_true_v[pmt])
                 flash.time_true = f['time_true']
             if np.sum(flash.pe_v) > 0:
                 flash.to_torch()
@@ -190,18 +187,18 @@ class ROOTInput:
         result = FlashMatchInput()
         # Find the list of sim::MCTrack entries for this event
         particles, opflash = self.get_entry(entry)
-        result.raw_particles = particles
+        # result.raw_particles = particles
         result.raw_qcluster_v, result.all_pts_v = self.make_qcluster(particles,select_pdg=[13],exclude_pdg=[2112, 1000010020, 1000010030, 1000020030, 1000020040])
         result.qcluster_v = [tpc.copy() for tpc in result.raw_qcluster_v]
 
          # If configured, shift X (for MCTrack to imitate reco)
         if self.shift_tpc:
             for i, qcluster in enumerate(result.qcluster_v):
-                qcluster.xshift = qcluster.true_time * self.detector['DriftVelocity']
+                qcluster.xshift = qcluster.time_true * self.detector['DriftVelocity']
                 if qcluster.xmin - self.detector['ActiveVolumeMin'][0] < self.detector['ActiveVolumeMax'][0] - qcluster.xmax:
-                    result.qcluster_v[i] = qcluster + qcluster.xshift #+ (qcluster.min_x() - self.det.ActiveVolume().Min()[0])
+                    result.qcluster_v[i] = qcluster.shift(qcluster.xshift) #+ (qcluster.min_x() - self.det.ActiveVolume().Min()[0])
                 else:
-                    result.qcluster_v[i] = qcluster - qcluster.xshift #- (self.det.ActiveVolume().Max()[0] - qcluster.min_x())
+                    result.qcluster_v[i] = qcluster.shift(-qcluster.xshift) #- (self.det.ActiveVolume().Max()[0] - qcluster.min_x())
 
         if self.truncate_tpc_readout:
             # Define allowed X recording regions
@@ -239,9 +236,9 @@ class ROOTInput:
         for pmt in result.flash_v:
             for tpc in result.qcluster_v:
                 if tpc.idx in tpc_matched: continue
-                dt = abs(pmt.true_time - tpc.true_time)
+                dt = abs(pmt.time_true - tpc.time_true)
                 if dt < self.matching_window:
-                    result.true_match.append((pmt.idx,tpc.idx))
+                    result.true_match.append((pmt.idx, tpc.idx))
                     tpc_matched.append(tpc.idx)
                     pmt_matched.append(pmt.idx)
                     break

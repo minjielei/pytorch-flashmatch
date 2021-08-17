@@ -3,6 +3,7 @@ import torch
 import yaml
 import itertools
 from toymc import ToyMC
+from rootinput import ROOTInput
 from flashmatch_types import FlashMatch
 from algorithms.match_model import GradientModel, PoissonMatchLoss, EarlyStopping
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -11,10 +12,10 @@ class FlashMatchManager():
     """
     Top level FlashMatchManager program that runs the io and matching algorithm
     """
-    def __init__(self, detector_cfg, photon_library, cfg):
-        self.configure(detector_cfg, photon_library, cfg)
+    def __init__(self, detector_cfg, photon_library, cfg, particleana=None, opflashana=None):
+        self.configure(detector_cfg, photon_library, cfg, particleana, opflashana)
 
-    def configure(self, photon_library, detector_file, cfg):
+    def configure(self, photon_library, detector_file, cfg, particleana=None, opflashana=None):
         config = yaml.load(open(cfg), Loader=yaml.Loader)['FlashMatchManager']
         self.detector_specs = yaml.load(open(detector_file), Loader=yaml.Loader)['DetectorSpecs']
         self.max_iteration = int(config['MaxIteration'])
@@ -26,7 +27,10 @@ class FlashMatchManager():
         self.num_processes = config['NumProcesses']
         self.loss_threshold = config['LossThreshold']
 
-        self.reader = ToyMC(photon_library, detector_file, cfg)
+        if particleana is None or opflashana is None:
+          self.reader = ToyMC(photon_library, detector_file, cfg)
+        else:
+          self.reader = ROOTInput(particleana, opflashana, photon_library, detector_file, cfg)
         self.flash_algo = self.reader.flash_algo
         self.loss_fn = PoissonMatchLoss()
 
@@ -158,14 +162,24 @@ class FlashMatchManager():
             track_xmin, track_xmax = qcluster.xmin, qcluster.xmax
             dx_min, dx_max = self.vol_xmin - track_xmin, self.vol_xmax - track_xmax
             dx0 = - (flash.time - self.time_shift) * self.drift_velocity
-            if dx0 >= dx_min and dx0 <= dx_max:
-                if qcluster.idx == flash.idx:
-                    true_loss.append(self.train_one_step(input, target, dx0, dx_min, dx_max))
+            # if dx0 >= dx_min and dx0 <= dx_max:
+            if (flash.idx, qcluster.idx) in flashmatch_input.true_match:
+                true_loss.append(self.train_one_step(input, target, dx0, dx_min, dx_max))
         return true_loss
 
     # train model for one step on flashmatch input to get the initial loss
     def train_one_step(self, input, target, dx0, dx_min, dx_max):
         model = GradientModel(self.flash_algo, dx0, dx_min, dx_max)
+        model.to(device)
+
+        pred = model(input)
+        loss = self.loss_fn(pred, target)
+        return loss.item()
+
+    def train_one_step_raw(self, raw_qcluster, flash):
+        input = raw_qcluster.qpt_v
+        target = flash.pe_v
+        model = GradientModel(self.flash_algo, 0, -1000, 1000)
         model.to(device)
 
         pred = model(input)

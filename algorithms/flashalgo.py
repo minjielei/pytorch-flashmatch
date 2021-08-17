@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import yaml
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -16,7 +15,7 @@ class FlashAlgo():
         self.global_qe = config["GlobalQE"]
         self.qe_v = torch.tensor(config["CCVCorrection"], device=device)
 
-    def fill_estimate(self, track, use_tensor=False):
+    def fill_estimate(self, track):
         """
         fill flash hypothsis based on given qcluster track
         ---------

@@ -67,11 +67,11 @@ class ToyMC():
             # Apply x shift and set flash time
             ftime, dx = xt_v[idx]
             flash.time = ftime
-            flash.true_time = ftime
+            flash.time_true = ftime
             qcluster = raw_qcluster.shift(dx)
             qcluster.idx = idx
-            qcluster.true_time = ftime
-            raw_qcluster.true_time = ftime
+            qcluster.time_true = ftime
+            raw_qcluster.time_true = ftime
             # Drop qcluster points that are outside the recording range
             if self.truncate_tpc:
                 qcluster.drop(min_tpcx, max_tpcx)
