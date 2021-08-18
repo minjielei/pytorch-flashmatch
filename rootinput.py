@@ -4,6 +4,7 @@ from root_numpy import root2array
 from constants import ParticleMass
 from algorithms.lightpath import LightPath
 from algorithms.flashalgo import FlashAlgo
+from algorithms.geoalgo import GeoAlgo
 from flashmatch_types import FlashMatchInput, QCluster, Flash
 
 def convert(energy_v, pdg_code):
@@ -21,6 +22,7 @@ class ROOTInput:
         self.detector = yaml.load(open(det_file), Loader=yaml.Loader)['DetectorSpecs']
         self.qcluster_algo = LightPath(self.detector, cfg_file)
         self.flash_algo = FlashAlgo(plib, cfg_file)
+        self.geo_algo = GeoAlgo(self.detector)
         self.periodTPC = [-1000, 1000]
         self.tpc_tree_name = "largeant_particletree"
         self.pmt_tree_name = "opflash_flashtree"
@@ -128,20 +130,14 @@ class ROOTInput:
                 traj = xyzs_v[i][j]
                 # If configured, truncate the physical boundary here
                 # (before shifting or readout truncation)
-                # if self._truncate_tpc_active:
-                #     bbox = self.det.ActiveVolume()
-                #     traj = self.geoalgo.BoxOverlap(bbox,traj)
+                if self.truncate_tpc_active:
+                    traj = self.geo_algo.box_overlap(traj)
                 # Need at least 2 points to make QCluster
                 if len(traj) < 2: continue;
                 # Make QCluster
                 qcluster += self.qcluster_algo.make_qcluster_from_track(traj)
                 all_pts  += qcluster
                 #time = min(time, np.min(ts_v[i][j]) * 1e-3)
-            # If configured, truncate the physical boundary here
-            if self.truncate_tpc_active:
-                pt_min, pt_max = self.detector['ActiveVolumeMin'], self.detector['ActiveVolumeMax']
-                qcluster.drop(pt_min[0],pt_max[0],pt_min[1],
-                              pt_max[1],pt_min[2],pt_max[2])
             # need to be non-empty
             if len(qcluster) == 0: continue
             #ts=p['time_v']
