@@ -1,4 +1,5 @@
-**/plib.h5
+**/**.h5
+**/**.root
 **.ipynb
 .ipynb_checkpoints
 __pycache__

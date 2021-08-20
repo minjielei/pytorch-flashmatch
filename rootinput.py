@@ -163,7 +163,7 @@ class ROOTInput:
             flash.idx = f_idx
             pe_reco_v = f['pe_v']
             pe_true_v = f['pe_true_v']
-            for pmt in range(self.detector['NOpDets']):
+            for pmt in range(self.detector['PhotonLibraryNOpDetChannels']):
                 flash.pe_v.append(pe_reco_v[pmt])
                 flash.pe_err_v.append(0.)
                 flash.time = f['time']

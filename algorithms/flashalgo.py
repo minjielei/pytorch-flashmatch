@@ -32,7 +32,7 @@ class FlashAlgo():
 
         if len(self.qe_v) == 0:
           self.qe_v = torch.ones(local_pe_v.shape, device=device)
-        return local_pe_v * self.global_qe * self.qe_v
+        return local_pe_v * self.global_qe / self.qe_v
 
     def backward_gradient(self, track):
         """
@@ -46,4 +46,4 @@ class FlashAlgo():
         """
         vids = self.plib.Position2VoxID(track[:, :3])
         grad = (self.plib.Visibility(vids+1) - self.plib.Visibility(vids)) / self.plib.gap
-        return grad * (track[:, 3].unsqueeze(-1)) * self.global_qe * self.qe_v
+        return grad * (track[:, 3].unsqueeze(-1)) * self.global_qe / self.qe_v
