@@ -8,8 +8,8 @@ def print_match_result(flashmatch_input, match):
         loss, reco_x, reco_pe = match.loss_v[idx], match.reco_x_v[idx], match.reco_pe_v[idx]
         reco_x += qcluster_v[i].xmin
         track_id, flash_id = qcluster_v[i].idx, flash_v[j].idx
-        correct = (track_id, flash_id) in flashmatch_input.true_match
+        correct = (flash_id, track_id) in flashmatch_input.true_match
         true_x = flashmatch_input.raw_qcluster_v[i].xmin
         true_pe = flash_v[j].sum()
         template = """TPC/PMT IDs {}/{}, Loss {:.5f}, Correct? {}, reco vs. true: X {:.5f} vs. {:.5f}, PE {:.5f} vs. {:.5f}"""
-        print(template.format(track_id, flash_id, loss, correct, true_x, reco_x, true_pe, reco_pe))
+        print(template.format(track_id, flash_id, loss, correct, reco_x, true_x, reco_pe, true_pe))

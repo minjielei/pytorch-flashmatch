@@ -5,7 +5,7 @@ import torch
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class PhotonLibrary(object):
-    def __init__(self, fname='photon_library/plib_20180801.h5', pmt_loc='photon_library/pmt_loc.csv'):
+    def __init__(self, fname='photon_library/plib_20201209.h5', pmt_loc='photon_library/pmt_loc.csv'):
         if not os.path.isfile(fname):
             print('Downloading photon library file... (>300MByte, may take minutes')
             os.system('curl -O https://www.nevis.columbia.edu/~kazuhiro/plib.h5 ./')
@@ -19,17 +19,7 @@ class PhotonLibrary(object):
             self._max  = torch.tensor(f['max']).to(device)
             self.shape = torch.tensor(f['numvox']).to(device)
 
-        self.gap = 5.0 # distance between adjacent voxels
-        pmt_data = np.loadtxt(pmt_loc,skiprows=1,delimiter=',')
-        if not (pmt_data[:,0].astype(np.int32) == np.arange(pmt_data.shape[0])).all():
-            raise Exception('pmt_loc.csv contains optical channel data not in order of channel numbers')
-        self._pmt_pos = torch.from_numpy(pmt_data[:,1:4]).to(device)
-        self._pmt_dir = torch.from_numpy(pmt_data[:,4:7]).to(device)
-        if not self._pmt_pos.shape[0] == self._vis.shape[1]:
-            raise Exception('Optical detector count mismatch: photon library %d v.s. pmt_loc.csv %d' % (self._vis.shape[1],
-                                                                                                        self._pmt_pos.shape[0]))
-        # Convert the PMT positions in a normalized coordinate (fractional position within the voxelized volume)
-        self._pmt_pos = (self._pmt_pos - self._min) / (self._max - self._min)
+        self.gap = (self._max[0] - self._min[0]) / self.shape[0] # x distance between adjacent voxels
 
     def VisibilityFromXYZ(self, pos, ch=None):
         if not torch.is_tensor(pos):

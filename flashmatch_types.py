@@ -69,7 +69,7 @@ class QCluster:
 
     def __iadd__(self, other):
         if len(self.qpt_v) == 0:
-            return other
+            return other.copy()
         else:
             self.qpt_v = torch.cat((self.qpt_v, other.qpt_v), 0)
         return self

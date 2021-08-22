@@ -6,7 +6,7 @@ def plot_flash(toymc, flash, x=None, **kwargs):
     """
     Plot a flashmatch::Flash_t
     """
-    nopch = toymc.detector['NOpDets']
+    nopch = toymc.detector['PhotonLibraryNOpDetChannels']
     pmt_positions = []
     if x is not None and not isinstance(x, float):
         raise Exception('x needs to be a float')

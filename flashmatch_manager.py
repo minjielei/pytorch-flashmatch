@@ -69,13 +69,17 @@ class FlashMatchManager():
         import torch.multiprocessing as mp
         from multiprocessing.pool import ThreadPool
         ctx = mp.get_context("spawn")
+        track_id, flash_id = 0, 0
         with ThreadPool(processes=self.num_processes) as pool:
-            for idx, (loss, reco_x, reco_pe) in enumerate(pool.imap(self.one_pmt_match, paramlist)):
-                track_id = paramlist[idx][0].idx
-                flash_id = paramlist[idx][1].idx
+            for loss, reco_x, reco_pe in pool.imap(self.one_pmt_match, paramlist):
                 match.loss_matrix[track_id, flash_id] = loss
                 match.reco_x_matrix[track_id, flash_id] = reco_x
                 match.reco_pe_matrix[track_id, flash_id] = reco_pe
+                if flash_id < len(flashmatch_input.flash_v) - 1:
+                  flash_id += 1
+                else:
+                  track_id += 1
+                  flash_id = 0
         match.bipartite_match()
         return match
 
@@ -162,7 +166,14 @@ class FlashMatchManager():
             track_xmin, track_xmax = qcluster.xmin, qcluster.xmax
             dx_min, dx_max = self.vol_xmin - track_xmin, self.vol_xmax - track_xmax
             dx0 = - (flash.time - self.time_shift) * self.drift_velocity
-            # if dx0 >= dx_min and dx0 <= dx_max:
+            tolerence = self.touching_track_window/2. * self.drift_velocity
+            contained_tpc0 = (dx0>=dx_min-tolerence) and (dx0<=dx_max+tolerence)
+            contained_tpc1 = (-dx0>=dx_min-tolerence) and (-dx0<=dx_max+tolerence)
+            # Inspect, in either assumption (original track is in tpc0 or tpc1), the track is contained in the whole active volume or not
+            if contained_tpc0:
+                dx0 = max(dx0, self.vol_xmin - track_xmin + self.offset)
+            else:
+                dx0 = min(-dx0, self.vol_xmax - track_xmax - self.offset)
             if (flash.idx, qcluster.idx) in flashmatch_input.true_match:
                 true_loss.append(self.train_one_step(input, target, dx0, dx_min, dx_max))
         return true_loss
@@ -170,16 +181,6 @@ class FlashMatchManager():
     # train model for one step on flashmatch input to get the initial loss
     def train_one_step(self, input, target, dx0, dx_min, dx_max):
         model = GradientModel(self.flash_algo, dx0, dx_min, dx_max)
-        model.to(device)
-
-        pred = model(input)
-        loss = self.loss_fn(pred, target)
-        return loss.item()
-
-    def train_one_step_raw(self, raw_qcluster, flash):
-        input = raw_qcluster.qpt_v
-        target = flash.pe_v
-        model = GradientModel(self.flash_algo, 0, -1000, 1000)
         model.to(device)
 
         pred = model(input)
