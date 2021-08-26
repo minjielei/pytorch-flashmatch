@@ -1,6 +1,7 @@
 **/**.h5
 **/**.root
 **.ipynb
+**.code-workspace
 .ipynb_checkpoints
 __pycache__
 test

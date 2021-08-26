@@ -1,6 +1,7 @@
 import torch
 from torch.autograd import grad
 import torch.nn as nn
+from .siren_modules import Siren
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class XShift(nn.Module):
@@ -39,4 +40,18 @@ class GenFlash(torch.autograd.Function):
         pad = torch.zeros(grad_input.shape[0], 3, device=device)
         return torch.cat((grad_input, pad), -1), None
         
+class SirenFlash(nn.Module):
+    def __init__(self, flash_algo, in_features=3, out_features=180, hidden_features=256, hidden_layers=1, outermost_linear=True, omega=5):
+        super().__init__()
+        self.flash_algo = flash_algo
+        self.model = Siren(in_features, out_features, hidden_features, hidden_layers, outermost_linear, omega)
+        self.model = self.model.float()
+        self.model = torch.nn.DataParallel(self.model, device=device)
+        self.model.cuda()
+        self.model.load_state_dict(torch.load(flash_algo.siren_path))
 
+    def forward(self, input):
+        local_pe_v = torch.sum(self.plib.VisibilityFromXYZ(input[:, :3])*(input[:, 3].unsqueeze(-1)), axis = 0)
+        if len(self.qe_v) == 0:
+          self.qe_v = torch.ones(local_pe_v.shape, device=device)
+        return local_pe_v * self.flash_algo.global_qe * self.flash_algo.reco_pe_calib / self.flash_algo.qe_v

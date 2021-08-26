@@ -1,9 +1,10 @@
+import sys
 import numpy as np
 from flashmatch_manager import FlashMatchManager
 from photon_library import PhotonLibrary
 from utils import print_match_result
 
-def demo(cfg_file, det_file, out_file='', num_tracks=None, num_entries=1):
+def demo(cfg_file, det_file, out_file='', particleana=None,opflashana=None, start_entry=0, repeat=1, num_tracks=10, num_entries=-1):
     """
     Run function for ToyMC
     ---------
@@ -11,13 +12,31 @@ def demo(cfg_file, det_file, out_file='', num_tracks=None, num_entries=1):
       cfg_file:   string for the location of a config file
       det_file:   string for the location of a detector spec file
       out_file:   string for an output analysis csv file path (optional)
+      repeat:     int, number of times to run the toy MC simulation
       num_tracks: int for number of tracks to be generated each entry(optional)
       num_entries: number of entries(event) to run the matcher on
     """
     plib = PhotonLibrary()
-    mgr = FlashMatchManager(plib, det_file, cfg_file)
-    if num_tracks is not None:
-        num_tracks = int(num_tracks)
+    mgr = FlashMatchManager(plib, det_file, cfg_file, particleana, opflashana)
+
+    entries = mgr.entries()
+
+    toymc = False
+    if len(entries) < 1:
+        toymc = True
+        entries = np.arange(repeat)
+    else:
+        if start_entry <0:
+            return
+        else:
+            entries = np.arange(start_entry,max(entries)+1)
+            if len(entries) < 1:
+                return 
+
+        if num_entries >0:
+            entries = np.arange(start_entry,min(start_entry+num_entries,max(entries)+1))
+            if len(entries)<1:
+                return
 
     if out_file:
         import os
@@ -26,9 +45,15 @@ def demo(cfg_file, det_file, out_file='', num_tracks=None, num_entries=1):
             return 
 
     np_result = None
-
-    for entry in range(num_entries):
-        match_input = mgr.make_flashmatch_input(num_tracks)
+    counter = 0
+    for entry in entries:
+        sys.stdout.write('Entry %d/%d\n' %(entry,len(entries)))
+        sys.stdout.write('Event %d\n' % mgr.event_id(entry))
+        sys.stdout.flush()
+        # Generate samples
+        generator_arg = entry if not toymc else num_tracks
+        print(generator_arg)
+        match_input = mgr.make_flashmatch_input(generator_arg)
         match_v = mgr.match(match_input)
 
         if not out_file:
@@ -38,10 +63,12 @@ def demo(cfg_file, det_file, out_file='', num_tracks=None, num_entries=1):
         all_matches = []
         for idx, (tpc_id, flash_id) in enumerate(zip(match_v.tpc_ids, match_v.flash_ids)):
             qcluster, flash = match_input.qcluster_v[tpc_id], match_input.flash_v[flash_id]
+            flash_idx, tpc_idx = match_input.flash_v[flash_id].idx, match_input.qcluster_v[tpc_id].idx
             raw_qcluster = match_input.raw_qcluster_v[tpc_id]
             loss, reco_dx, reco_pe = match_v.loss_v[idx], match_v.reco_x_v[idx], match_v.reco_pe_v[idx]
-            matched = (tpc_id, flash_id) in match_input.true_match
+            matched = (flash_idx, tpc_idx) in match_input.true_match
             store = np.array([[
+                mgr.event_id(entry),
                 entry,
                 loss,
                 qcluster.idx,
@@ -56,11 +83,11 @@ def demo(cfg_file, det_file, out_file='', num_tracks=None, num_entries=1):
                 len(qcluster),
                 qcluster.sum(),
                 qcluster.length(),
-                qcluster.true_time,
+                qcluster.time_true,
                 reco_pe,
                 flash.sum(),
                 flash.time,
-                flash.true_time
+                flash.time_true
             ]])
             all_matches.append(store)
         if out_file and len(all_matches):
@@ -78,6 +105,7 @@ def demo(cfg_file, det_file, out_file='', num_tracks=None, num_entries=1):
 def attribute_names():
 
     return [
+        'event',
         'entry',
         'loss',
         'tpc_idx',
@@ -104,17 +132,25 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Run flash matching')
 
-    parser.add_argument('--cfg', '-c', default='data/flashmatch.cfg')
-    parser.add_argument('--det', '-d', default='data/detector_specs.yml')
+    parser.add_argument('--cfg', default='data/flashmatch.cfg')
+    parser.add_argument('--det', default='data/detector_specs.yml')
     parser.add_argument('--outfile', '-o', default='')
+    parser.add_argument('--particle', '-p')
+    parser.add_argument('--opflash', '-op')
+    parser.add_argument('--startentry', '-s', default = 0)
+    parser.add_argument('--repeat', '-r', default = 1)
     parser.add_argument('--ntracks', '-nt', default = 10)
-    parser.add_argument('--nentries', '-ne', default=1)
+    parser.add_argument('--nentries', '-ne', default= -1)
     args = parser.parse_args()
 
     cfg_file = args.cfg
     det_file = args.det
     outfile = args.outfile
+    particle = args.particle
+    opflash = args.opflash
+    start_entry = args.startentry
+    repeat = args.repeat
     num_tracks = int(args.ntracks)
     num_entries = int(args.nentries)
 
-    demo(cfg_file, det_file, outfile, num_tracks, num_entries)
+    demo(cfg_file, det_file, outfile, particle, opflash, start_entry, repeat, num_tracks, num_entries)

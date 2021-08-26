@@ -3,7 +3,7 @@ import yaml
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class FlashAlgo():
-    def __init__(self, photon_library, cfg_file=None):
+    def __init__(self, photon_library=None, cfg_file=None):
         self.plib = photon_library
         self.global_qe = 0.0093
         self.reco_pe_calib = 1
@@ -16,6 +16,10 @@ class FlashAlgo():
         self.global_qe = config["GlobalQE"]
         self.reco_pe_calib = config["RecoPECalibFactor"]
         self.qe_v = torch.tensor(config["CCVCorrection"], device=device)
+        self.siren_path = config["SirenPath"]
+        if not self.siren_path and not self.plib:
+          print("Must provide either a photon library file or Siren model path")
+          raise Exception
 
     def fill_estimate(self, track):
         """

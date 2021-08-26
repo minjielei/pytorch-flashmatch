@@ -14,7 +14,7 @@ class PhotonLibrary(object):
             raise Exception
 
         with h5.File(fname,'r') as f:
-            self._vis  = torch.from_numpy(np.array(f['vis'])).to(device)
+            self._vis  = torch.from_numpy(np.array(f['vis'], dtype=np.float32)).to(device)
             self._min  = torch.tensor(f['min']).to(device)
             self._max  = torch.tensor(f['max']).to(device)
             self.shape = torch.tensor(f['numvox']).to(device)

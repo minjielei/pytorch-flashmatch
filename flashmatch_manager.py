@@ -41,6 +41,18 @@ class FlashMatchManager():
         self.touching_track_window = config['TouchingTrackWindow']
         self.offset = config['Offset']
 
+    def entries(self):
+        from rootinput import ROOTInput
+        if not isinstance(self.reader, ROOTInput):
+            return []
+        return np.arange(len(self.reader))
+
+    def event_id(self, entry_id):
+        from rootinput import ROOTInput
+        if not isinstance(self.reader, ROOTInput):
+            return -1
+        return self.reader.event_id(entry_id)
+
     def make_flashmatch_input(self, num_tracks):
         """
         Make flash matching input using configured reader

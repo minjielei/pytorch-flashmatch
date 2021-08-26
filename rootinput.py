@@ -18,7 +18,7 @@ def filter_energy_deposit(energy_v, threshold=0.1):
     return full_idx
 
 class ROOTInput:
-    def __init__(self, particleana, opflashana, plib, det_file, cfg_file=None):
+    def __init__(self, particleana, opflashana, plib=None, det_file='data/detector_specs.yml', cfg_file=None):
         self.detector = yaml.load(open(det_file), Loader=yaml.Loader)['DetectorSpecs']
         self.qcluster_algo = LightPath(self.detector, cfg_file)
         self.flash_algo = FlashAlgo(plib, cfg_file)
@@ -58,6 +58,8 @@ class ROOTInput:
         self.clustering_threshold = config['ClusteringThreshold']
         self.clustering_time_window = config['ClusteringTimeWindow']
         self.matching_window_opflash = config['MatchingWindowOpflash']
+
+        self.pe_variation = config["PEVariation"]
 
         # Set seed if there is any specified
         if 'NumpySeed' in config:
@@ -171,6 +173,13 @@ class ROOTInput:
                 flash.time_true = f['time_true']
             if np.sum(flash.pe_v) > 0:
                 flash.to_torch()
+                # apply variation if needed
+                if self.pe_variation>0.:
+                    var = abs(np.random.normal(1.0,self.pe_variation,len(flash)))
+                    for idx in range(len(flash)):
+                        estimate = float(int(np.random.poisson(flash.pe_v[idx].item() * var[idx])))
+                        flash.pe_v[idx] = estimate
+                        flash.pe_err_v.append(np.sqrt(estimate))
                 flash_v.append(flash)
         return flash_v
 
