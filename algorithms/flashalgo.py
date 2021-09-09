@@ -3,11 +3,13 @@ import yaml
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class FlashAlgo():
-    def __init__(self, photon_library=None, cfg_file=None):
+    def __init__(self, detector_specs, photon_library=None, cfg_file=None):
         self.plib = photon_library
         self.global_qe = 0.0093
         self.reco_pe_calib = 1
         self.qe_v = []  # CCVCorrection factor array
+        self.vol_min = torch.tensor(detector_specs["ActiveVolumeMin"], device=device)
+        self.vol_max = torch.tensor(detector_specs["ActiveVolumeMax"], device=device)
         if cfg_file:
           self.configure(cfg_file)
 
@@ -20,6 +22,12 @@ class FlashAlgo():
         if not self.siren_path and not self.plib:
           print("Must provide either a photon library file or Siren model path")
           raise Exception
+
+    def NormalizePosition(self, pos):
+        '''
+        Convert position in world coordinate to normalized coordinate      
+        '''
+        return (pos - self.vol_min) / (self.vol_max - self.vol_min)
 
     def fill_estimate(self, track):
         """

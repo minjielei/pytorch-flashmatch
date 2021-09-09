@@ -1,3 +1,4 @@
+import itertools
 import numpy as np
 import copy
 import torch
@@ -32,6 +33,40 @@ class FlashMatch:
         self.loss_v = self.loss_matrix[row_idx, col_idx]
         self.reco_x_v = self.reco_x_matrix[row_idx, col_idx]
         self.reco_pe_v = self.reco_pe_matrix[row_idx, col_idx]
+
+    def local_match(self):
+        self.tpc_ids = np.arange(self.loss_matrix.shape[0])
+        self.flash_ids = np.argmax(self.loss_matrix, axis = 1)
+        self.loss_v = self.loss_matrix[self.tpc_ids, self.flash_ids]
+        self.reco_x_v = self.reco_x_matrix[self.tpc_ids, self.flash_ids]
+        self.reco_pe_v = self.reco_pe_matrix[self.tpc_ids, self.flash_ids]
+
+    def global_match(self, loss_threshold):
+        self.filter_loss_matrix(loss_threshold)
+        min_loss = np.inf
+
+        num_tpc, num_pmt = self.loss_matrix.shape[0], self.loss_matrix.shape[1]
+        col_idx = np.arange(num_pmt)
+        for row_idx in itertools.product(np.arange(num_tpc), repeat=num_pmt):
+            losses = self.loss_matrix[row_idx, col_idx]
+            if np.sum(losses) < min_loss:
+                min_loss = np.sum(losses)
+                self.tpc_ids = row_idx
+                self.flash_ids = col_idx
+
+        self.loss_v = self.loss_matrix[self.tpc_ids, self.flash_ids]
+        self.reco_x_v = self.reco_x_matrix[self.tpc_ids, self.flash_ids]
+        self.reco_pe_v = self.reco_pe_matrix[self.tpc_ids, self.flash_ids]
+
+    def filter_loss_matrix(self, loss_threshold):
+        for i, row in enumerate(self.loss_matrix):
+            if np.min(row) > loss_threshold:
+                self.loss_matrix = np.delete(self.loss_matrix, i, axis=0)
+
+        for j in range(self.loss_matrix.shape[1]):
+            col = self.loss_matrix[:, j]
+            if np.min(col) > loss_threshold:
+                self.loss_matrix = np.delete(self.loss_matrix, j, axis=1)
 
 class Flash:
     def __init__(self, *args):

@@ -21,7 +21,7 @@ class ROOTInput:
     def __init__(self, particleana, opflashana, plib=None, det_file='data/detector_specs.yml', cfg_file=None):
         self.detector = yaml.load(open(det_file), Loader=yaml.Loader)['DetectorSpecs']
         self.qcluster_algo = LightPath(self.detector, cfg_file)
-        self.flash_algo = FlashAlgo(plib, cfg_file)
+        self.flash_algo = FlashAlgo(self.detector, plib, cfg_file)
         self.geo_algo = GeoAlgo(self.detector)
         self.periodTPC = [-1000, 1000]
         self.tpc_tree_name = "largeant_particletree"
@@ -51,6 +51,7 @@ class ROOTInput:
         self.matching_window = config['MatchingWindow']
         # Whether to exclude flashes too close to each other
         self.exclude_reflashing = config['ExcludeReflashing']
+        self.dt_threshold = config['DtThreshold']
         self.tpc_tree_name = config['TPCTreeName']
         self.pmt_tree_name = config['PMTTreeName']
 
@@ -229,7 +230,7 @@ class ROOTInput:
         if self.exclude_reflashing:
             selected = []
             for pmt in result.flash_v:
-                if pmt.dt_prev > dt_threshold and pmt.dt_next > dt_threshold:
+                if pmt.dt_prev > self.dt_threshold and pmt.dt_next > self.dt_threshold:
                     selected.append(pmt)
                 else:
                     print('dropping', pmt.dt_prev, pmt.dt_next)

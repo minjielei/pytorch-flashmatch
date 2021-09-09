@@ -61,7 +61,7 @@ def demo(cfg_file, det_file, out_file='', particleana=None,opflashana=None, star
             continue
         
         all_matches = []
-        for idx, (tpc_id, flash_id) in enumerate(zip(match_v.tpc_ids, match_v.flash_ids)):
+        for idx, (flash_id, tpc_id) in enumerate(zip(match_v.flash_ids, match_v.tpc_ids)):
             qcluster, flash = match_input.qcluster_v[tpc_id], match_input.flash_v[flash_id]
             flash_idx, tpc_idx = match_input.flash_v[flash_id].idx, match_input.qcluster_v[tpc_id].idx
             raw_qcluster = match_input.raw_qcluster_v[tpc_id]
@@ -71,8 +71,8 @@ def demo(cfg_file, det_file, out_file='', particleana=None,opflashana=None, star
                 mgr.event_id(entry),
                 entry,
                 loss,
-                qcluster.idx,
                 flash.idx,
+                qcluster.idx,
                 raw_qcluster.xmin,
                 raw_qcluster.xmax,
                 qcluster.xmin,
@@ -87,7 +87,9 @@ def demo(cfg_file, det_file, out_file='', particleana=None,opflashana=None, star
                 reco_pe,
                 flash.sum(),
                 flash.time,
-                flash.time_true
+                flash.time_true,
+                flash.dt_prev,
+                flash.dt_next
             ]])
             all_matches.append(store)
         if out_file and len(all_matches):
@@ -108,8 +110,8 @@ def attribute_names():
         'event',
         'entry',
         'loss',
-        'tpc_idx',
         'flash_idx',
+        'track_idx',
         'true_min_x',
         'true_max_x',
         'qcluster_min_x',
@@ -125,6 +127,8 @@ def attribute_names():
         'flash_sum', # OpFlash Sum
         'flash_time',
         'flash_time_true',
+        'flash_dt_prev',
+        'flash_dt_next'
     ]
 
 if __name__ == '__main__':

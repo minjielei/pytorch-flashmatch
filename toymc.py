@@ -9,7 +9,7 @@ class ToyMC():
         self.detector = yaml.load(open(detector_file), Loader=yaml.Loader)['DetectorSpecs']
         self.plib = photon_library
         self.qcluster_algo = LightPath(self.detector, cfg_file)
-        self.flash_algo = FlashAlgo(photon_library, cfg_file)
+        self.flash_algo = FlashAlgo(self.detector, photon_library, cfg_file)
         self.time_algo = 'random'
         self.track_algo = 'random'
         self.periodTPC = [-1000, 1000]

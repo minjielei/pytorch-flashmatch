@@ -12,10 +12,10 @@ class FlashMatchManager():
     """
     Top level FlashMatchManager program that runs the io and matching algorithm
     """
-    def __init__(self, detector_cfg, photon_library, cfg, particleana=None, opflashana=None):
-        self.configure(detector_cfg, photon_library, cfg, particleana, opflashana)
+    def __init__(self, detector_cfg, cfg, particleana=None, opflashana=None, photon_library=None):
+        self.configure(detector_cfg, cfg, particleana, opflashana, photon_library)
 
-    def configure(self, photon_library, detector_file, cfg, particleana=None, opflashana=None):
+    def configure(self, detector_file, cfg, particleana, opflashana, photon_library):
         config = yaml.load(open(cfg), Loader=yaml.Loader)['FlashMatchManager']
         self.detector_specs = yaml.load(open(detector_file), Loader=yaml.Loader)['DetectorSpecs']
         self.max_iteration = int(config['MaxIteration'])

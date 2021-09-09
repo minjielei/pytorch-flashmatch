@@ -5,7 +5,7 @@ import torch
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class PhotonLibrary(object):
-    def __init__(self, fname='photon_library/plib_20201209.h5', pmt_loc='photon_library/pmt_loc.csv'):
+    def __init__(self, fname='photon_library/plib_20201209.h5'):
         if not os.path.isfile(fname):
             print('Downloading photon library file... (>300MByte, may take minutes')
             os.system('curl -O https://www.nevis.columbia.edu/~kazuhiro/plib.h5 ./')
@@ -20,6 +20,9 @@ class PhotonLibrary(object):
             self.shape = torch.tensor(f['numvox']).to(device)
 
         self.gap = (self._max[0] - self._min[0]) / self.shape[0] # x distance between adjacent voxels
+
+    def VisibilityFromAxisID(self, axis_id, ch=None):
+        return self.Visibility(self.AxisID2VoxID(axis_id),ch)
 
     def VisibilityFromXYZ(self, pos, ch=None):
         if not torch.is_tensor(pos):
@@ -39,6 +42,26 @@ class PhotonLibrary(object):
         if ch is None:
             return self._vis[vids]
         return self._vis[vids][ch]
+
+    def AxisID2VoxID(self, axis_id):
+        '''
+        Takes an integer ID for voxels along xyz axis (ix, iy, iz) and converts to a voxel ID
+        INPUT
+          axis_id - Length 3 integer array noting the position in discretized index along xyz axis
+        RETURN
+          The voxel ID (single integer)          
+        '''
+        return axis_id[:, 0] + axis_id[:, 1]*self.shape[0] + axis_id[:, 2]*(self.shape[0] * self.shape[1])
+
+    def AxisID2Position(self, axis_id):
+        '''
+        Takes a axis ID (discretized location along xyz axis) and converts to a xyz position (x,y,z)
+        INPUT
+          axis_id - The axis ID in an integer array (ix,iy,iz)
+        RETURN
+          Length 3 floating point array noting the position along xyz axis
+        '''    
+        return self._min + (self._max - self._min) / self.shape * (axis_id + 0.5)
 
     def Position2VoxID(self, pos):
         '''
