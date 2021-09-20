@@ -36,7 +36,7 @@ class FlashMatch:
 
     def local_match(self):
         self.tpc_ids = np.arange(self.loss_matrix.shape[0])
-        self.flash_ids = np.argmax(self.loss_matrix, axis = 1)
+        self.flash_ids = np.argmin(self.loss_matrix, axis = 1)
         self.loss_v = self.loss_matrix[self.tpc_ids, self.flash_ids]
         self.reco_x_v = self.reco_x_matrix[self.tpc_ids, self.flash_ids]
         self.reco_pe_v = self.reco_pe_matrix[self.tpc_ids, self.flash_ids]
@@ -76,6 +76,7 @@ class Flash:
         self.idx = np.inf    # index from original larlite vector
         self.time = np.inf   # Flash timing, a candidate T0
         self.time_true = np.inf  # MCFlash timing
+        self.time_width = np.inf # flash time integration window
         self.dt_next = np.inf   # dt to next flash
         self.dt_prev = np.inf   # dt to previous flash
 

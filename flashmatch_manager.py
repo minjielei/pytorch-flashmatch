@@ -36,10 +36,18 @@ class FlashMatchManager():
 
         self.vol_xmin = self.detector_specs["ActiveVolumeMin"][0]
         self.vol_xmax = self.detector_specs["ActiveVolumeMax"][0]
+        self.tpc0_xmin = self.detector_specs["MinPosition_TPC0"][0]
+        self.tpc0_xmax = self.detector_specs["MaxPosition_TPC0"][0]
+        self.tpc1_xmin = self.detector_specs["MinPosition_TPC1"][0]
+        self.tpc1_xmax = self.detector_specs["MaxPosition_TPC1"][0]
+
         self.drift_velocity = self.detector_specs["DriftVelocity"]
         self.time_shift = config['BeamTimeShift']
         self.touching_track_window = config['TouchingTrackWindow']
         self.offset = config['Offset']
+
+        self.exp_frac_v = config['PhotonDecayFractions']
+        self.exp_tau_v = config['PhotonDecayTimes']
 
     def entries(self):
         from rootinput import ROOTInput
@@ -92,7 +100,7 @@ class FlashMatchManager():
                 else:
                   track_id += 1
                   flash_id = 0
-        match.bipartite_match()
+        match.local_match()
         return match
 
     def one_pmt_match(self, params):
@@ -105,25 +113,28 @@ class FlashMatchManager():
         Returns
           loss, reco_x, reco_pe
         """
+        res = []
         qcluster, flash = params
-        track_xmin, track_xmax = qcluster.xmin, qcluster.xmax
-        dx_min, dx_max = self.vol_xmin - track_xmin, self.vol_xmax - track_xmax
-        dx0 = - (flash.time - self.time_shift) * self.drift_velocity
+        
+        dx0_v, dx_min, dx_max = self.calculate_dx0(flash, qcluster)
+        if len(dx0_v) == 0:
+          return np.inf, np.inf, np.inf
 
-        tolerence = self.touching_track_window/2. * self.drift_velocity
-        contained_tpc0 = (dx0>=dx_min-tolerence) and (dx0<=dx_max+tolerence)
-        contained_tpc1 = (-dx0>=dx_min-tolerence) and (-dx0<=dx_max+tolerence)
-        # Inspect, in either assumption (original track is in tpc0 or tpc1), the track is contained in the whole active volume or not
-        if contained_tpc0:
-            dx0 = max(dx0, self.vol_xmin - track_xmin + self.offset)
-        elif contained_tpc1:
-            dx0 = min(-dx0, self.vol_xmax - track_xmax - self.offset)
-        else:
-            return np.inf, np.inf, np.inf
+        # calculate the integral factor to reweight flash based on its time width
+        integral_factor = 0
+        for i in range(len(self.exp_frac_v)):
+            integral_factor += self.exp_frac_v[i] * (1 - np.exp(-1 * flash.time_width / self.exp_tau_v[i]))
 
         input = qcluster.qpt_v
-        target = flash.pe_v
-        return self.train(input, target, dx0, dx_min, dx_max)
+        target = flash.pe_v / integral_factor
+
+        min_loss = np.inf
+        for dx_0 in dx0_v:
+            loss, reco_x, reco_pe = self.train(input, target, dx_0, dx_min, dx_max)
+            if loss < min_loss:
+                min_loss = loss
+                res = [loss, reco_x, reco_pe]
+        return res
 
     def train(self, input, target, dx0, dx_min, dx_max):
         """
@@ -168,6 +179,26 @@ class FlashMatchManager():
 
         return loss.item(), model.xshift.dx.item(), torch.sum(pred).item()
 
+    # determine initial dx0 to use for model, assuming track is contained in tpc0 or tpc1
+    def calculate_dx0(self, flash, qcluster):
+        x0_v = []
+
+        track_xmin, track_xmax = qcluster.xmin, qcluster.xmax
+        dx_min, dx_max = self.vol_xmin - track_xmin, self.vol_xmax - track_xmax
+        dx0 = (flash.time - self.time_shift) * self.drift_velocity
+
+        # determine initial x0
+        tolerence = self.touching_track_window/2. * self.drift_velocity
+        contained_tpc0 = (-dx0>=dx_min-tolerence) and (-dx0<=dx_max+tolerence)
+        contained_tpc1 = (dx0>=dx_min-tolerence) and (dx0<=dx_max+tolerence)
+        # Inspect, in either assumption (original track is in tpc0 or tpc1), the track is contained in the whole active volume or not
+        if contained_tpc0:
+            x0_v.append(max(-dx0, self.vol_xmin - track_xmin + self.offset))
+        if contained_tpc1:
+            x0_v.append(min(dx0, self.vol_xmax - track_xmax - self.offset))
+
+        return x0_v, dx_min, dx_max
+
     # compute initial loss on flashmatch_input to study loss separation
     def initial_loss(self, flashmatch_input):
         true_loss = []
@@ -175,19 +206,14 @@ class FlashMatchManager():
         for qcluster, flash in paramlist:
             input = qcluster.qpt_v
             target = flash.pe_v
-            track_xmin, track_xmax = qcluster.xmin, qcluster.xmax
-            dx_min, dx_max = self.vol_xmin - track_xmin, self.vol_xmax - track_xmax
-            dx0 = - (flash.time - self.time_shift) * self.drift_velocity
-            tolerence = self.touching_track_window/2. * self.drift_velocity
-            contained_tpc0 = (dx0>=dx_min-tolerence) and (dx0<=dx_max+tolerence)
-            contained_tpc1 = (-dx0>=dx_min-tolerence) and (-dx0<=dx_max+tolerence)
-            # Inspect, in either assumption (original track is in tpc0 or tpc1), the track is contained in the whole active volume or not
-            if contained_tpc0:
-                dx0 = max(dx0, self.vol_xmin - track_xmin + self.offset)
-            else:
-                dx0 = min(-dx0, self.vol_xmax - track_xmax - self.offset)
+
+            dx0_v, dx_min, dx_max = self.calculate_dx0(flash, qcluster)
+
             if (flash.idx, qcluster.idx) in flashmatch_input.true_match:
-                true_loss.append(self.train_one_step(input, target, dx0, dx_min, dx_max))
+                res = []
+                for dx0 in dx0_v:
+                    res.append([self.train_one_step(input, target, dx0, dx_min, dx_max)])
+                true_loss.append(min(res))
         return true_loss
 
     # train model for one step on flashmatch input to get the initial loss

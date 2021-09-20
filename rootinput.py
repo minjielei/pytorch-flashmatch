@@ -172,6 +172,7 @@ class ROOTInput:
                 flash.time = f['time']
                 flash.pe_true_v.append(pe_true_v[pmt])
                 flash.time_true = f['time_true']
+                flash.time_width = f['time_width']
             if np.sum(flash.pe_v) > 0:
                 flash.to_torch()
                 # apply variation if needed
