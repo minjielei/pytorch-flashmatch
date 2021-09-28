@@ -27,12 +27,13 @@ class FlashMatch:
         self.reco_pe_matrix = np.zeros((num_qclusters, num_flashes))
     
     def bipartite_match(self):
-        row_idx, col_idx = linear_sum_assignment(self.loss_matrix)
-        self.tpc_ids = row_idx
-        self.flash_ids = col_idx
-        self.loss_v = self.loss_matrix[row_idx, col_idx]
-        self.reco_x_v = self.reco_x_matrix[row_idx, col_idx]
-        self.reco_pe_v = self.reco_pe_matrix[row_idx, col_idx]
+        row_filter, col_filter, filtered_loss_matrix = self.filter_loss_matrix(700)
+        row_idx, col_idx = linear_sum_assignment(filtered_loss_matrix)
+        self.tpc_ids = row_filter[row_idx]
+        self.flash_ids = col_filter[col_idx]
+        self.loss_v = self.loss_matrix[self.tpc_ids, self.flash_ids]
+        self.reco_x_v = self.reco_x_matrix[self.tpc_ids, self.flash_ids]
+        self.reco_pe_v = self.reco_pe_matrix[self.tpc_ids, self.flash_ids]
 
     def local_match(self):
         self.tpc_ids = np.arange(self.loss_matrix.shape[0])
@@ -42,31 +43,39 @@ class FlashMatch:
         self.reco_pe_v = self.reco_pe_matrix[self.tpc_ids, self.flash_ids]
 
     def global_match(self, loss_threshold):
-        self.filter_loss_matrix(loss_threshold)
+        row_filter, col_filter, filtered_loss_matrix = self.filter_loss_matrix(loss_threshold)
         min_loss = np.inf
 
-        num_tpc, num_pmt = self.loss_matrix.shape[0], self.loss_matrix.shape[1]
+        num_tpc, num_pmt = filtered_loss_matrix.shape[0], filtered_loss_matrix.shape[1]
         col_idx = np.arange(num_pmt)
         for row_idx in itertools.product(np.arange(num_tpc), repeat=num_pmt):
-            losses = self.loss_matrix[row_idx, col_idx]
+            losses = filtered_loss_matrix[row_idx, col_idx]
             if np.sum(losses) < min_loss:
                 min_loss = np.sum(losses)
                 self.tpc_ids = row_idx
                 self.flash_ids = col_idx
+
+        self.tpc_ids = row_filter[self.tpc_ids]
+        self.flash_ids = col_filter[self.flash_ids]
 
         self.loss_v = self.loss_matrix[self.tpc_ids, self.flash_ids]
         self.reco_x_v = self.reco_x_matrix[self.tpc_ids, self.flash_ids]
         self.reco_pe_v = self.reco_pe_matrix[self.tpc_ids, self.flash_ids]
 
     def filter_loss_matrix(self, loss_threshold):
+        row_filter = []
+        col_filter = []
         for i, row in enumerate(self.loss_matrix):
-            if np.min(row) > loss_threshold:
-                self.loss_matrix = np.delete(self.loss_matrix, i, axis=0)
+            if np.min(row) <= loss_threshold:
+                row_filter.append(i)
 
         for j in range(self.loss_matrix.shape[1]):
             col = self.loss_matrix[:, j]
-            if np.min(col) > loss_threshold:
-                self.loss_matrix = np.delete(self.loss_matrix, j, axis=1)
+            if np.min(col) <= loss_threshold:
+                col_filter.append(j)
+
+
+        return np.array(row_filter), np.array(col_filter), self.loss_matrix[row_filter, :][:, col_filter]
 
 class Flash:
     def __init__(self, *args):

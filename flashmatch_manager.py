@@ -100,7 +100,7 @@ class FlashMatchManager():
                 else:
                   track_id += 1
                   flash_id = 0
-        match.local_match()
+        match.bipartite_match()
         return match
 
     def one_pmt_match(self, params):

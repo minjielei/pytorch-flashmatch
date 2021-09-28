@@ -17,7 +17,7 @@ def demo(cfg_file, det_file, out_file='', particleana=None,opflashana=None, star
       num_entries: number of entries(event) to run the matcher on
     """
     plib = PhotonLibrary()
-    mgr = FlashMatchManager(plib, det_file, cfg_file, particleana, opflashana)
+    mgr = FlashMatchManager(det_file, cfg_file, particleana, opflashana, plib)
 
     entries = mgr.entries()
 
