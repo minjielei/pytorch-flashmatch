@@ -204,8 +204,14 @@ class FlashMatchManager():
         true_loss = []
         paramlist = list(itertools.product(flashmatch_input.qcluster_v, flashmatch_input.flash_v))
         for qcluster, flash in paramlist:
+
+            # calculate the integral factor to reweight flash based on its time width
+            integral_factor = 0
+            for i in range(len(self.exp_frac_v)):
+                integral_factor += self.exp_frac_v[i] * (1 - np.exp(-1 * flash.time_width / self.exp_tau_v[i]))
+
             input = qcluster.qpt_v
-            target = flash.pe_v
+            target = flash.pe_v / integral_factor
 
             dx0_v, dx_min, dx_max = self.calculate_dx0(flash, qcluster)
 
@@ -223,4 +229,8 @@ class FlashMatchManager():
 
         pred = model(input)
         loss = self.loss_fn(pred, target)
+
+        # loss.backward()
+        # print(model.xshift.dx.grad)
+
         return loss.item()

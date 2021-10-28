@@ -42,7 +42,7 @@ class GenFlash(torch.autograd.Function):
         return torch.cat((grad_input, pad), -1), None
         
 class SirenFlash(nn.Module):
-    def __init__(self, flash_algo, in_features=3, hidden_features=256, hidden_layers=2, out_features=180, outermost_linear=True, omega=30):
+    def __init__(self, flash_algo, in_features=3, hidden_features=512, hidden_layers=5, out_features=180, outermost_linear=True, omega=30):
         super().__init__()
         self.flash_algo = flash_algo
         self.model = Siren(in_features, hidden_features, hidden_layers, out_features, outermost_linear, omega)
@@ -50,14 +50,14 @@ class SirenFlash(nn.Module):
         self.model = torch.nn.DataParallel(self.model, device_ids=device_ids)
         self.model.cuda()
         self.model.load_state_dict(torch.load(flash_algo.siren_path))
-        self.model.eval()
+        for param in self.model.parameters():
+            param.requires_grad = False
 
     def forward(self, input):
-        coords = input.clone().detach().requires_grad_(True)
-        coords = self.flash_algo.NormalizePosition(coords[:, :3])
-        pred = self.model(coords)['model_out'] * 16
-        pred = torch.exp(-pred) - 1e-7
+        coord = self.flash_algo.NormalizePosition(input[:, :3])
+        pred = self.model(coord)['model_out'] * (16.118095 + 1.19209275e-07)-1.19209275e-07
+        pred = torch.clip(torch.exp(-pred) - 1e-7, 0.0, 1.0)
         local_pe_v = torch.sum(pred*(input[:, 3].unsqueeze(-1)), axis = 0)
         if len(self.flash_algo.qe_v) == 0:
-          self.flash_algo.qe_v = torch.ones(local_pe_v.shape, device=device)
+            self.flash_algo.qe_v = torch.ones(local_pe_v.shape, device=device)
         return local_pe_v * self.flash_algo.global_qe * self.flash_algo.reco_pe_calib / self.flash_algo.qe_v

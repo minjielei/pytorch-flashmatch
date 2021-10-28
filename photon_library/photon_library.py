@@ -20,6 +20,8 @@ class PhotonLibrary(object):
             self.shape = torch.tensor(f['numvox']).to(device)
 
         self.gap = (self._max[0] - self._min[0]) / self.shape[0] # x distance between adjacent voxels
+        self._max[0] += 10
+        self._min[0] += 10
 
     def VisibilityFromAxisID(self, axis_id, ch=None):
         return self.Visibility(self.AxisID2VoxID(axis_id),ch)
@@ -63,6 +65,16 @@ class PhotonLibrary(object):
         '''    
         return self._min + (self._max - self._min) / self.shape * (axis_id + 0.5)
 
+    def Position2AxisID(self, pos):
+        '''
+        Takes a tensor of xyz position (x,y,z) and converts to a tensor of voxel IDs
+        INPUT
+          pos - Tensor of length 3 floating point array noting the position along xyz axis
+        RETURN
+          Tensor of sigle integer voxel IDs       
+        '''
+        return ((pos - self._min) / (self._max - self._min) * self.shape)
+
     def Position2VoxID(self, pos):
         '''
         Takes a tensor of xyz position (x,y,z) and converts to a tensor of voxel IDs
@@ -74,3 +86,17 @@ class PhotonLibrary(object):
         axis_ids = ((pos - self._min) / (self._max - self._min) * self.shape).int()
 
         return (axis_ids[:, 0] + axis_ids[:, 1] * self.shape[0] +  axis_ids[:, 2]*(self.shape[0] * self.shape[1])).long()
+
+    def VoxID2AxisID(self, vid):
+        '''
+        Takes a voxel ID and converts to discretized index along xyz axis
+        INPUT
+          vid - The voxel ID (single integer)          
+        RETURN
+          Length 3 integer array noting the position in discretized index along xyz axis
+        '''
+        xid = vid.int() % self.shape[0]
+        yid = ((vid - xid) / self.shape[0]).int() % self.shape[1]
+        zid = ((vid - xid - (yid * self.shape[0])) / (self.shape[0] * self.shape[1])).int() % self.shape[2]
+        
+        return torch.reshape(torch.stack([xid,yid,zid], -1), (-1, 3)).float()

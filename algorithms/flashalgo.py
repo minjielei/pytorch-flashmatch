@@ -27,7 +27,7 @@ class FlashAlgo():
         '''
         Convert position in world coordinate to normalized coordinate      
         '''
-        return (pos - self.vol_min) / (self.vol_max - self.vol_min)
+        return ((self.plib.Position2AxisID(pos) + 0.5) / self.plib.shape - 0.5) * 2
 
     def fill_estimate(self, track):
         """
