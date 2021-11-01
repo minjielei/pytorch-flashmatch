@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .match_layers import XShift, GenFlash, SirenFlash
+from .match_modules import XShift, GenFlash, SirenFlash
 
 class GradientModel(torch.nn.Module):
     """
@@ -29,10 +29,13 @@ class PoissonMatchLoss(nn.Module):
     """
     def __init__(self):
         super(PoissonMatchLoss, self).__init__()
-        self.poisson_nll = nn.PoissonNLLLoss(log_input=False, full=True)
+        self.poisson_nll = nn.PoissonNLLLoss(log_input=False, full=True, reduction="none")
 
     def forward(self, input, target):
-        return self.poisson_nll(input, target)
+        H = torch.clamp(input, min=0.01)
+        O = torch.clamp(target, min=0.01)
+        loss = self.poisson_nll(H, O) - torch.log(H) / 2
+        return torch.mean(loss)
 
 class EarlyStopping():
     """

@@ -50,8 +50,8 @@ class SirenFlash(nn.Module):
         self.model = torch.nn.DataParallel(self.model, device_ids=device_ids)
         self.model.cuda()
         self.model.load_state_dict(torch.load(flash_algo.siren_path))
-        for param in self.model.parameters():
-            param.requires_grad = False
+        # for param in self.model.parameters():
+        #     param.requires_grad = False
 
     def forward(self, input):
         coord = self.flash_algo.NormalizePosition(input[:, :3])
