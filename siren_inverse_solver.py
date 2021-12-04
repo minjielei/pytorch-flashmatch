@@ -14,28 +14,38 @@ class SirenInverseSolver():
     """
     Siren Inverse Solver using flash match data
     """
-    def __init__(self, det_file, cfg_file, plib, particleana=None, opflashana=None):
-        self.configure(det_file, cfg_file, plib, particleana, opflashana)
+    def __init__(self, det_file, cfg_file, particleana=None, opflashana=None):
+        self.configure(det_file, cfg_file, particleana, opflashana)
 
-    def configure(self, det_file, cfg_file, plib, particleana, opflashana):
+    def configure(self, det_file, cfg_file, particleana, opflashana):
         self.detector_specs = yaml.load(open(det_file), Loader=yaml.Loader)['DetectorSpecs']
+        self.cfg_file = cfg_file
         config = yaml.load(open(cfg_file), Loader=yaml.Loader)['SirenInverse']
 
+        self.model_dir = config['ModelDir']
+        self.experiment_name = config['ExperimentName']
+        self.plib_file = config['PlibFile']
+        self.lut_file = config['LUTFile']
         self.num_tracks = int(config['NumTracks'])
         self.num_batches = int(config['NumBatches'])
         self.num_epochs = int(config['NumEpochs'])
+        self.steps_til_summary = int(config['StepsTilSummary'])
         self.epochs_til_checkpoint = int(config['EpochsTilCheckpoint'])
         self.lr = config['LearningRate']
 
-        self.mgr = FlashMatchManager(det_file, cfg_file, particleana, opflashana, plib)
+        self.plib = PhotonLibrary(self.plib_file, self.lut_file)
+
+        self.mgr = FlashMatchManager(det_file, cfg_file, particleana, opflashana, self.plib)
         self.model = SirenFlash(self.mgr.flash_algo)
         self.optim = torch.optim.AdamW(lr=self.lr, params=self.model.parameters(), amsgrad=True)
         self.loss_fn = PoissonMatchLoss()
 
-    def train(self, model_dir):
+    def train(self):
         epoch_start = 0
         total_steps = 0
         train_losses = []
+
+        model_dir = os.path.join(self.model_dir, self.experiment_name)
         
         if os.path.exists(model_dir+'/checkpoints'):
             val = input("The model directory %s exists. Load latest run? (y/n)" % model_dir)
@@ -48,7 +58,7 @@ class SirenInverseSolver():
 
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
-            pass
+        shutil.copy(self.cfg_file, model_dir)
 
         checkpoints_dir = os.path.join(model_dir, 'checkpoints')
         if not os.path.exists(checkpoints_dir):
@@ -65,9 +75,10 @@ class SirenInverseSolver():
                 total_loss = 0
                 for i in range(self.num_tracks):
                     track, gt_flash = track_v[i], flash_v[i]
+                    weight = self.plib.WeightFromPos(track[:, :3])
                     pred_flash = self.model(track)
 
-                    loss = self.loss_fn(pred_flash, gt_flash)
+                    loss = self.loss_fn(pred_flash, gt_flash, weight)
                     total_loss += loss
                 total_loss /= self.num_tracks
                 self.optim.zero_grad()
@@ -77,16 +88,25 @@ class SirenInverseSolver():
                 train_losses.append(total_loss.item())
                 total_steps += 1
 
+                if not total_steps % self.steps_til_summary:
+                    torch.save({
+                        'step': total_steps,
+                        'epoch': epoch,
+                        'model_state_dict': self.model.state_dict(),
+                        'optimizer_state_dict': self.optim.state_dict(),
+                        'loss': train_losses,
+                        },  os.path.join(checkpoints_dir, 'model_current.pth'))
+
             if not epoch % self.epochs_til_checkpoint and epoch:
                 print('epoch:', epoch )
 
                 torch.save({
-                            'step': total_steps,
-                            'epoch': epoch,
-                            'model_state_dict': self.model.state_dict(),
-                            'optimizer_state_dict': self.optim.state_dict(),
-                            'loss': train_losses,
-                            },  os.path.join(checkpoints_dir, 'model_epoch_%04d.pth' % epoch))
+                        'step': total_steps,
+                        'epoch': epoch,
+                        'model_state_dict': self.model.state_dict(),
+                        'optimizer_state_dict': self.optim.state_dict(),
+                        'loss': train_losses,
+                        },  os.path.join(checkpoints_dir, 'model_epoch_%04d.pth' % epoch))
                 torch.save(self.model.model.state_dict(),
                         os.path.join(checkpoints_dir, 'siren_model_epoch_%04d.pth' % epoch))
                 
@@ -108,15 +128,10 @@ if __name__=="__main__":
 
     parser.add_argument('--cfg', default='data/flashmatch.cfg')
     parser.add_argument('--det', default='data/detector_specs.yml')
-    parser.add_argument('--model_dir', '-m', default='models/experiment')
     args = parser.parse_args()
 
     cfg_file = args.cfg
     det_file = args.det
-    model_dir = args.model_dir
 
-    plib = PhotonLibrary()
-    siren_solver = SirenInverseSolver(det_file, cfg_file, plib)
-    siren_solver.train(model_dir)
-
-
+    siren_solver = SirenInverseSolver(det_file, cfg_file)
+    siren_solver.train()

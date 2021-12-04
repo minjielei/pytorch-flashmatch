@@ -5,7 +5,7 @@ import torch
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class PhotonLibrary(object):
-    def __init__(self, fname='photon_library/plib_20201209.h5'):
+    def __init__(self, fname='photon_library/plib.h5', lut_file=None):
         if not os.path.isfile(fname):
             print('Downloading photon library file... (>300MByte, may take minutes')
             os.system('curl -O https://www.nevis.columbia.edu/~kazuhiro/plib.h5 ./')
@@ -15,20 +15,74 @@ class PhotonLibrary(object):
 
         with h5.File(fname,'r') as f:
             self._vis  = torch.from_numpy(np.array(f['vis'], dtype=np.float32)).to(device)
-            self._min  = torch.tensor(f['min']).to(device)
-            self._max  = torch.tensor(f['max']).to(device)
-            self.shape = torch.tensor(f['numvox']).to(device)
+            self._min  = torch.tensor(f['min'], dtype=torch.float32).to(device)
+            self._max  = torch.tensor(f['max'], dtype=torch.float32).to(device)
+            self.shape = torch.tensor(f['numvox'], dtype=torch.float32).to(device)
 
         self.gap = (self._max[0] - self._min[0]) / self.shape[0] # x distance between adjacent voxels
         self._max[0] += 10
         self._min[0] += 10
+
+        # Load weighting look up table if provided
+        if lut_file:
+            with h5.File(lut_file,'r') as f:
+                self.lut = torch.tensor(f['lut'], dtype=torch.float32).to(device)
+                self.bins = torch.tensor(f['bins'], dtype=torch.float32).to(device)
+                self.pmt_groups = torch.cat((torch.zeros(90), torch.ones(90))).to(device)
+        
+    def LoadData(self, transform=True, eps=1e-5):
+        '''
+        Load photon library visibility data. Apply scale transform if specified
+        '''
+        data = self._vis
+        if transform:
+            data = self.DataTransform(data, eps)
+
+        return data
+
+    def DataTransform(self, data, eps=1e-5):
+        '''
+        Transform vis data to log scale for training
+        '''
+        v0 = np.log10(eps)
+        v1 = np.log10(1.+eps)
+        return (torch.log10(data+eps) - v0) / (v1 - v0)
+
+    def DataTransformInv(self, data, eps=1e-5):
+        '''
+        Inverse log scale transform
+        '''
+        v0 = np.log10(eps)
+        v1 = np.log10(1.+eps)
+        return torch.pow(10, data * (v1 - v0) + v0) - eps
+
+    def LoadCoord(self, normalize=True, extend=False):
+        '''
+        Load input coord for training/evaluation
+        '''
+        vox_ids = torch.arange(self._vis.shape[0]).to(device)
+        
+        return self.CoordFromVoxID(vox_ids, normalize=normalize)
+
+    def CoordFromVoxID(self, idx, normalize=True):
+        '''
+        Load input coord from vox id 
+        '''
+        if np.isscalar(idx):
+            idx = np.array([idx])
+        
+        pos_coord = self.VoxID2Coord(idx)       
+        if normalize:
+            pos_coord = 2 * (pos_coord - 0.5)
+        
+        return pos_coord.squeeze()
 
     def VisibilityFromAxisID(self, axis_id, ch=None):
         return self.Visibility(self.AxisID2VoxID(axis_id),ch)
 
     def VisibilityFromXYZ(self, pos, ch=None):
         if not torch.is_tensor(pos):
-          pos = torch.tensor(pos, device=device)
+            pos = torch.tensor(pos, device=device)
         return self.Visibility(self.Position2VoxID(pos), ch)
 
     def Visibility(self, vids, ch=None):
@@ -100,3 +154,28 @@ class PhotonLibrary(object):
         zid = ((vid - xid - (yid * self.shape[0])) / (self.shape[0] * self.shape[1])).int() % self.shape[2]
         
         return torch.reshape(torch.stack([xid,yid,zid], -1), (-1, 3)).float()
+
+    def VoxID2Coord(self, vid):
+        '''
+        Takes a voxel ID and converts to normalized coordniate
+        INPUT
+          vid - The voxel ID (single integer)          
+        RETURN
+          Length 3 normalized coordinate array
+        '''
+        axis_id = self.VoxID2AxisID(vid)
+        
+        return (axis_id + 0.5) / self.shape
+
+    def WeightFromPos(self, pos):
+        '''
+          Weighting factor for data at pos based on the provided weight lut file
+        '''
+        vid = self.Position2VoxID(pos)
+        vis = self.DataTransform(self.Visibility(vid))
+        xid = (vid % 74).unsqueeze(-1)
+        bin_id = torch.bucketize(vis, self.bins, right=True) - 1
+        batch_idx = (bin_id + self.pmt_groups * \
+                  len(self.bins) + xid * 2 * len(self.bins)).long()
+
+        return torch.mean(self.lut[batch_idx], 0)

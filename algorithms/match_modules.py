@@ -50,13 +50,13 @@ class SirenFlash(nn.Module):
         self.model = torch.nn.DataParallel(self.model, device_ids=device_ids)
         self.model.cuda()
         self.model.load_state_dict(torch.load(flash_algo.siren_path))
-        # for param in self.model.parameters():
-        #     param.requires_grad = False
+#         for param in self.model.parameters():
+#             param.requires_grad = False
 
     def forward(self, input):
         coord = self.flash_algo.NormalizePosition(input[:, :3])
-        pred = self.model(coord)['model_out'] * (16.118095 + 1.19209275e-07)-1.19209275e-07
-        pred = torch.clip(torch.exp(-pred) - 1e-7, 0.0, 1.0)
+        pred = self.model(coord)['model_out']
+        pred = torch.clip(self.flash_algo.plib.DataTransformInv(pred), 0.0, 1.0)
         local_pe_v = torch.sum(pred*(input[:, 3].unsqueeze(-1)), axis = 0)
         if len(self.flash_algo.qe_v) == 0:
             self.flash_algo.qe_v = torch.ones(local_pe_v.shape, device=device)
