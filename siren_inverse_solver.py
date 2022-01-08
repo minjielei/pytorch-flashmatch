@@ -3,12 +3,12 @@ import shutil, utils
 import yaml
 import torch
 import numpy as np
+from functools import partial
 from torch.utils.data import DataLoader
 from photon_library import PhotonLibrary
-from flashmatch_manager import FlashMatchManager
+from toymc_siren import ToyMCSiren
 from algorithms.match_modules import SirenFlash
 from utils import DataWrapper, collate_fn
-from algorithms.match_model import PoissonMatchLoss
 
 class SirenInverseSolver():
     """
@@ -25,7 +25,6 @@ class SirenInverseSolver():
         self.model_dir = config['ModelDir']
         self.experiment_name = config['ExperimentName']
         self.plib_file = config['PlibFile']
-        self.lut_file = config['LUTFile']
         self.num_tracks = int(config['NumTracks'])
         self.num_batches = int(config['NumBatches'])
         self.num_epochs = int(config['NumEpochs'])
@@ -33,11 +32,11 @@ class SirenInverseSolver():
         self.epochs_til_checkpoint = int(config['EpochsTilCheckpoint'])
         self.lr = config['LearningRate']
 
-        self.plib = PhotonLibrary(self.plib_file, self.lut_file)
+        self.plib = PhotonLibrary(self.plib_file)
 
-        self.mgr = FlashMatchManager(det_file, cfg_file, particleana, opflashana, self.plib)
+        self.mgr = ToyMCSiren(self.plib, det_file, cfg_file)
         self.model = SirenFlash(self.mgr.flash_algo)
-        self.optim = torch.optim.AdamW(lr=self.lr, params=self.model.parameters(), amsgrad=True)
+        self.optim = torch.optim.Adam(lr=self.lr, params=self.model.parameters())
         self.loss_fn = PoissonMatchLoss()
 
     def train(self):
@@ -68,19 +67,23 @@ class SirenInverseSolver():
         flashmatch_input = self.mgr.make_flashmatch_input(self.num_tracks * self.num_batches)
         train_data = DataWrapper(flashmatch_input.raw_qcluster_v, flashmatch_input.flash_v)
         dataloader = DataLoader(train_data, shuffle=True, batch_size=self.num_tracks, pin_memory=False, collate_fn=collate_fn)
+        
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optim, mode='min', factor=0.5, patience=50, threshold=1e-4, 
+            threshold_mode='rel', cooldown=10, verbose=True)
 
         print("Training...")
         for epoch in range(epoch_start, self.num_epochs):
             for (track_v, flash_v) in dataloader:
                 total_loss = 0
-                for i in range(self.num_tracks):
-                    track, gt_flash = track_v[i], flash_v[i]
+                for i in range(len(track_v)):
+                    track, gt_flash = track_v[i], flash_v[i] 
                     weight = self.plib.WeightFromPos(track[:, :3])
                     pred_flash = self.model(track)
 
                     loss = self.loss_fn(pred_flash, gt_flash, weight)
                     total_loss += loss
-                total_loss /= self.num_tracks
+                total_loss /= len(track_v)
                 self.optim.zero_grad()
                 total_loss.backward()
                 self.optim.step()
@@ -96,7 +99,9 @@ class SirenInverseSolver():
                         'optimizer_state_dict': self.optim.state_dict(),
                         'loss': train_losses,
                         },  os.path.join(checkpoints_dir, 'model_current.pth'))
-
+                    
+            scheduler.step(total_loss)
+            
             if not epoch % self.epochs_til_checkpoint and epoch:
                 print('epoch:', epoch )
 
@@ -107,21 +112,44 @@ class SirenInverseSolver():
                         'optimizer_state_dict': self.optim.state_dict(),
                         'loss': train_losses,
                         },  os.path.join(checkpoints_dir, 'model_epoch_%04d.pth' % epoch))
-                torch.save(self.model.model.state_dict(),
-                        os.path.join(checkpoints_dir, 'siren_model_epoch_%04d.pth' % epoch))
+                torch.save({'model_state_dict': self.model.model.state_dict()},
+                        os.path.join(checkpoints_dir, 'siren_model_current.pth'))
                 
-                np.savetxt(os.path.join(checkpoints_dir, 'train_losses_epoch_%04d.txt' % epoch),
+                np.savetxt(os.path.join(checkpoints_dir, 'train_losses_current.txt'),
                         np.array(train_losses))
 
-                plt_name = os.path.join(checkpoints_dir, 'total_loss_epoch_%04d.png' % epoch)
+                plt_name = os.path.join(checkpoints_dir, 'total_loss_current.png')
                 utils.plot_losses(total_steps, train_losses, plt_name)
         
-        torch.save(self.model.state_dict(),
+        torch.save({'model_state_dict': self.model.state_dict()},
                os.path.join(checkpoints_dir, 'model_final.pth'))
-        torch.save(self.model.model.state_dict(),
+        torch.save({'model_state_dict': self.model.model.state_dict()},
                os.path.join(checkpoints_dir, 'siren_model_final.pth'))
         np.savetxt(os.path.join(checkpoints_dir, 'train_losses_final.txt'),
-                np.array(train_losses))        
+                np.array(train_losses))
+        
+        #Plot and save loss
+        plt_name = os.path.join(checkpoints_dir, 'total_loss_final.png')
+        utils.plot_losses(total_steps, train_losses, plt_name)
+
+def log_mse_loss(pred, gt, weight=1.):
+    H = torch.clamp(pred, min=1.)
+    O = torch.clamp(gt, min=1.)
+    return (weight * (torch.log10(O) - torch.log10(H)) ** 2).mean()
+
+class PoissonMatchLoss(torch.nn.Module):
+    """
+    Poisson NLL Loss for gradient-based optimization model
+    """
+    def __init__(self):
+        super(PoissonMatchLoss, self).__init__()
+        self.poisson_nll = torch.nn.PoissonNLLLoss(log_input=False, full=True, reduction="none")
+
+    def forward(self, input, target, weight=1.):
+        H = torch.clamp(input, min=0.01)
+        O = torch.clamp(target, min=0.01)
+        loss = self.poisson_nll(H, O)
+        return torch.mean(weight * loss)
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Run Siren inverse solving')
