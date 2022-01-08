@@ -5,7 +5,7 @@ import torch
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class PhotonLibrary(object):
-    def __init__(self, fname='photon_library/plib.h5', lut_file=None):
+    def __init__(self, fname='photon_library/plib_combined.h5', lut_file=None):
         if not os.path.isfile(fname):
             print('Downloading photon library file... (>300MByte, may take minutes')
             os.system('curl -O https://www.nevis.columbia.edu/~kazuhiro/plib.h5 ./')
@@ -127,7 +127,7 @@ class PhotonLibrary(object):
         RETURN
           Tensor of sigle integer voxel IDs       
         '''
-        return ((pos - self._min) / (self._max - self._min) * self.shape)
+        return torch.floor((pos - self._min) / (self._max - self._min) * self.shape)
 
     def Position2VoxID(self, pos):
         '''
@@ -171,11 +171,8 @@ class PhotonLibrary(object):
         '''
           Weighting factor for data at pos based on the provided weight lut file
         '''
-        vid = self.Position2VoxID(pos)
-        vis = self.DataTransform(self.Visibility(vid))
-        xid = (vid % 74).unsqueeze(-1)
-        bin_id = torch.bucketize(vis, self.bins, right=True) - 1
-        batch_idx = (bin_id + self.pmt_groups * \
-                  len(self.bins) + xid * 2 * len(self.bins)).long()
-
-        return torch.mean(self.lut[batch_idx], 0)
+        vis = self.VisibilityFromXYZ(pos)
+        weight = vis * 1e6
+        weight[vis==0] = 1.
+        
+        return torch.mean(weight, 0)
