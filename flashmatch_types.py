@@ -25,6 +25,7 @@ class FlashMatch:
         self.loss_matrix = np.zeros((num_qclusters, num_flashes))
         self.reco_x_matrix = np.zeros((num_qclusters, num_flashes))
         self.reco_pe_matrix = np.zeros((num_qclusters, num_flashes))
+        self.duration = np.zeros((num_qclusters, num_flashes))
     
     def bipartite_match(self):
         row_filter, col_filter, filtered_loss_matrix = self.filter_loss_matrix(700)
@@ -34,6 +35,7 @@ class FlashMatch:
         self.loss_v = self.loss_matrix[self.tpc_ids, self.flash_ids]
         self.reco_x_v = self.reco_x_matrix[self.tpc_ids, self.flash_ids]
         self.reco_pe_v = self.reco_pe_matrix[self.tpc_ids, self.flash_ids]
+        self.duration = self.duration[self.tpc_ids, self.flash_ids]
 
     def local_match(self):
         self.tpc_ids = np.arange(self.loss_matrix.shape[0])

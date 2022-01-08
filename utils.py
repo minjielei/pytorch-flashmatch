@@ -15,8 +15,9 @@ def print_match_result(flashmatch_input, match):
         correct = (flash_id, track_id) in flashmatch_input.true_match
         true_x = flashmatch_input.raw_qcluster_v[i].xmin
         true_pe = flash_v[j].sum()
-        template = """PMT/TPC IDs {}/{}, Loss {:.5f}, Correct? {}, reco vs. true: X {:.5f} vs. {:.5f}, PE {:.5f} vs. {:.5f}"""
-        print(template.format(flash_id, track_id, loss, correct, reco_x, true_x, reco_pe, true_pe))
+        duration = match.duration[idx]
+        template = """PMT/TPC IDs {}/{}, Loss {:.5f}, Correct? {}, reco vs. true: X {:.5f} vs. {:.5f}, PE {:.5f} vs. {:.5f}, Duration {:.5f}s"""
+        print(template.format(flash_id, track_id, loss, correct, reco_x, true_x, reco_pe, true_pe, duration))
 
 class DataWrapper(DataLoader):
     def __init__(self, input, target):

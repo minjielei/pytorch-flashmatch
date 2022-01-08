@@ -65,7 +65,7 @@ def demo(cfg_file, det_file, out_file='', particleana=None,opflashana=None, star
             qcluster, flash = match_input.qcluster_v[tpc_id], match_input.flash_v[flash_id]
             flash_idx, tpc_idx = match_input.flash_v[flash_id].idx, match_input.qcluster_v[tpc_id].idx
             raw_qcluster = match_input.raw_qcluster_v[tpc_id]
-            loss, reco_dx, reco_pe = match_v.loss_v[idx], match_v.reco_x_v[idx], match_v.reco_pe_v[idx]
+            loss, reco_dx, reco_pe, duration = match_v.loss_v[idx], match_v.reco_x_v[idx], match_v.reco_pe_v[idx], match_v.duration[idx]
             matched = (flash_idx, tpc_idx) in match_input.true_match
             store = np.array([[
                 mgr.event_id(entry),
@@ -89,7 +89,8 @@ def demo(cfg_file, det_file, out_file='', particleana=None,opflashana=None, star
                 flash.time,
                 flash.time_true,
                 flash.dt_prev,
-                flash.dt_next
+                flash.dt_next,
+                duration
             ]])
             all_matches.append(store)
         if out_file and len(all_matches):
@@ -128,7 +129,8 @@ def attribute_names():
         'flash_time',
         'flash_time_true',
         'flash_dt_prev',
-        'flash_dt_next'
+        'flash_dt_next',
+        'duration'
     ]
 
 if __name__ == '__main__':

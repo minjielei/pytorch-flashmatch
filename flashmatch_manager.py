@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import yaml
+import time
 import itertools
 from toymc import ToyMC
 from rootinput import ROOTInput
@@ -91,10 +92,11 @@ class FlashMatchManager():
         ctx = mp.get_context("spawn")
         track_id, flash_id = 0, 0
         with ThreadPool(processes=self.num_processes) as pool:
-            for loss, reco_x, reco_pe in pool.imap(self.one_pmt_match, paramlist):
+            for loss, reco_x, reco_pe, duration in pool.imap(self.one_pmt_match, paramlist):
                 match.loss_matrix[track_id, flash_id] = loss
                 match.reco_x_matrix[track_id, flash_id] = reco_x
                 match.reco_pe_matrix[track_id, flash_id] = reco_pe
+                match.duration[track_id, flash_id] = duration
                 if flash_id < len(flashmatch_input.flash_v) - 1:
                   flash_id += 1
                 else:
@@ -118,7 +120,7 @@ class FlashMatchManager():
         
         dx0_v, dx_min, dx_max = self.calculate_dx0(flash, qcluster)
         if len(dx0_v) == 0:
-          return np.inf, np.inf, np.inf
+          return np.inf, np.inf, np.inf, np.inf
 
         # calculate the integral factor to reweight flash based on its time width
         integral_factor = 0
@@ -130,10 +132,10 @@ class FlashMatchManager():
 
         min_loss = np.inf
         for dx_0 in dx0_v:
-            loss, reco_x, reco_pe = self.train(input, target, dx_0, dx_min, dx_max)
+            loss, reco_x, reco_pe, duration = self.train(input, target, dx_0, dx_min, dx_max)
             if loss < min_loss:
                 min_loss = loss
-                res = [loss, reco_x, reco_pe]
+                res = [loss, reco_x, reco_pe, duration]
         return res
 
     def train(self, input, target, dx0, dx_min, dx_max):
@@ -160,6 +162,7 @@ class FlashMatchManager():
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, min_lr=self.min_lr, factor=self.scheduler_factor)
         early_stopping = EarlyStopping(self.stopping_patience, self.stopping_delta)
 
+        start = time.time()
         for i in range(self.max_iteration):
             pred = model(input)
             loss = self.loss_fn(pred, target)
@@ -176,8 +179,9 @@ class FlashMatchManager():
             if loss > self.loss_threshold or early_stopping.early_stop:
                 # print("stopped at iteration ", i)
                 break
+        end = time.time()
 
-        return loss.item(), model.xshift.dx.item(), torch.sum(pred).item()
+        return loss.item(), model.xshift.dx.item(), torch.sum(pred).item(), end-start
 
     # determine initial dx0 to use for model, assuming track is contained in tpc0 or tpc1
     def calculate_dx0(self, flash, qcluster):
